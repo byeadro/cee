@@ -106,8 +106,8 @@ This is the canonical Run trace. Every Run goes through this path or terminates 
 #### Step 6 — Execution Strategy
 **Driver action:** invoke `STRATEGY_BUILDER.run(all_prior_artifacts)`.
 **Module behavior:** constructs ordered step list; inserts validation checkpoints; defines stop conditions.
-**Artifact produced:** `ExecutionStrategy` with `{steps[], checkpoints[], stop_conditions[]}`.
-**Validation:** at least one step; checkpoints reference defined steps; stop conditions are evaluable.
+**Artifact produced:** `ExecutionStrategy` with `{steps[], checkpoints[], stop_conditions[], estimated_cost_tokens}`. The `estimated_cost_tokens` field is a non-negative integer estimate of total token budget across all steps; populated by `STRATEGY_BUILDER` from per-step heuristics. Used downstream by `PROMPT_BUILDER` for chunking decisions.
+**Validation:** at least one step; checkpoints reference defined steps; stop conditions are evaluable; `estimated_cost_tokens ≥ 0`.
 **Persist:** `~/cee/runs/<run_id>/strategy.json`.
 **Branches:**
 - LOW complexity → 1 step, no checkpoints.

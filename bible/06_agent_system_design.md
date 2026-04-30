@@ -315,18 +315,23 @@ This catalog is illustrative. It's edited and expanded as CEE is used. The point
 ---
 ## 7. Outputs Produced
 ### 7.1 The `AgentPlan` artifact
-JSON object listing selected agents and their roles in the Run:
+JSON object listing selected agents as a list of `AgentRef` entries plus a free-text `coordination` description. Schema:
 ```json
 {
-  "primary": {"slug": "code-builder", "path": "~/cee/.claude/agents/code-builder.md"},
-  "critic": {"slug": "code-critic", "path": "~/cee/.claude/agents/code-critic.md"},
-  "optimizer": null,
-  "orchestrator": null,
-  "specialists": [],
-  "composition_pattern": "primary_then_critic",
+  "agents": [
+    {"slug": "code-builder", "posture": "primary", "path": "~/cee/.claude/agents/code-builder.md", "generated_in_run": false},
+    {"slug": "code-critic", "posture": "critic", "path": "~/cee/.claude/agents/code-critic.md", "generated_in_run": false}
+  ],
+  "coordination": "Primary executes the task; critic reviews and emits issues; primary revises based on critic feedback. Two-pass execution.",
   "produced_by": "AGENT_SELECTOR"
 }
 ```
+Field rules:
+- `agents`: list of `AgentRef` objects, length ≥ 1. Each `AgentRef` has `slug` (kebab-case ASCII), `posture` (one of the closed enum values from §5.1), `path` (under `~/cee/.claude/agents/`), `generated_in_run` (bool, true if generated in the current Run).
+- At least one agent in the list MUST have `posture` in `{primary, orchestrator}` — every Run needs a lead. The validator enforces this.
+- `coordination`: free-text string describing how the agents interact for this Run. Replaces the prior `composition_pattern` enum because the list-form can describe arbitrary compositions that no fixed enum captures.
+- `produced_by`: `"AGENT_SELECTOR"`.
+Note: this schema replaces the earlier flat-keyed-dict shape (with named `primary`, `critic`, `optimizer`, `orchestrator`, `specialists` fields). The list-form is more extensible — it gracefully supports multiple specialists, future postures, and custom coordination descriptions without a schema migration. Selection logic in `AGENT_SELECTOR` filters the list by `posture` when it needs the lead or any specific role.
 ### 7.2 Generated agent files (when applicable)
 New `.md` files at `~/cee/.claude/agents/<slug>.md`. Mirror to Obsidian. Promotion candidate in Notion.
 ### 7.3 Audit log entries
