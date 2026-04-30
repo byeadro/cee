@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# CEE-specific (user state, runtime artifacts)
+# DO commit: ~/cee/runs/golden/ (test fixtures)
+# DO NOT commit: ~/cee/runs/* (real Run state)
+runs/*
+!runs/golden/
+!runs/golden/**
+audit/
+bible/.sync_meta.json
+promotion_queue.json
+
+# IDE
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
