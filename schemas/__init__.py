@@ -15,8 +15,21 @@ Task 8b adds three satellite artifacts:
   (bible 19 §5.7); both can coexist, one is the persisted data and the
   other is the runtime signal.
 * ``RunSummary`` — the ``summary.json`` finalize artifact.
+
+Task 8c adds four sub-structure schemas (frontmatter blocks and
+prompt-tag declarations):
+
+* ``SkillFrontmatter`` — YAML frontmatter at the top of a Skill file
+  (bible 15 §5.2).
+* ``AgentFrontmatter`` — YAML frontmatter at the top of an agent file
+  (bible 06 §5.2.1).
+* ``GroundingDeclaration`` (with nested ``Source``) — contents of the
+  FinalPrompt's ``<grounding_rules>`` tag (bible 11 §5.4).
+* ``FormatDeclaration`` — contents of the FinalPrompt's
+  ``<output_format>`` tag (bible 10 §5.6).
 """
 
+from schemas.agent_frontmatter import AgentFrontmatter
 from schemas.agent_plan import AgentPlan, AgentRef
 from schemas.clarification_request import (
     ClarificationQuestion,
@@ -48,6 +61,8 @@ from schemas.final_prompt import (
     Skills,
     StopConditions,
 )
+from schemas.format_declaration import FormatDeclaration
+from schemas.grounding_declaration import GroundingDeclaration, Source
 from schemas.intent_object import IntentObject
 from schemas.raw_input import Attachment, RawInput
 # Aliased to avoid colliding with cee.errors.RunError (the exception class).
@@ -55,6 +70,7 @@ from schemas.raw_input import Attachment, RawInput
 # bible 19 §5.5); the exception class signals the failure at runtime.
 from schemas.run_error import RunError as RunErrorArtifact
 from schemas.run_summary import RunSummary
+from schemas.skill_frontmatter import SkillFrontmatter
 from schemas.skill_set import SkillRef, SkillSet
 
 __all__ = [
@@ -70,6 +86,11 @@ __all__ = [
     "ClarificationRequest",
     "RunErrorArtifact",
     "RunSummary",
+    # Top-level sub-structure models — task 8c
+    "SkillFrontmatter",
+    "AgentFrontmatter",
+    "GroundingDeclaration",
+    "FormatDeclaration",
     # Nested — RawInput
     "Attachment",
     # Nested — Classification
@@ -101,4 +122,6 @@ __all__ = [
     "Chunking",
     # Nested — ClarificationRequest
     "ClarificationQuestion",
+    # Nested — GroundingDeclaration
+    "Source",
 ]
