@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from errors import (
+    BootBibleSyncError,
     BootConsistencyError,
     BootError,
     CEEException,
@@ -354,3 +355,80 @@ def test_boot_consistency_error_caught_by_BootError() -> None:
         assert exc.drifts == [{"enum_name": "Foo"}]
     else:
         pytest.fail("BootError did not catch BootConsistencyError")
+
+
+# --------------------------------------------------------------------------- #
+# BootBibleSyncError (Phase 2 task 6 — boot/bible_sync.py)                    #
+# --------------------------------------------------------------------------- #
+#
+# Like BootConsistencyError, BootBibleSyncError extends BootError and
+# is NOT a canonical bible §5.7 class. The bible-grounding test above
+# intentionally excludes it. These tests cover the structural contract
+# the boot sequencer relies on: step="B2", kind in the closed
+# Literal, detail payload preserved, catchable through BootError /
+# CEEException.
+
+
+def test_boot_bible_sync_error_inherits_from_boot_error() -> None:
+    assert issubclass(BootBibleSyncError, BootError)
+    assert issubclass(BootBibleSyncError, CEEException)
+    assert issubclass(BootBibleSyncError, Exception)
+
+
+def test_boot_bible_sync_error_step_is_B2() -> None:
+    exc = BootBibleSyncError(kind="mcp_connect_failed", reason="anything")
+    assert exc.step == "B2"
+
+
+def test_boot_bible_sync_error_kind_preserved() -> None:
+    for kind in ("mcp_connect_failed", "page_deleted", "credentials_missing"):
+        exc = BootBibleSyncError(kind=kind, reason="r")  # type: ignore[arg-type]
+        assert exc.kind == kind
+
+
+def test_boot_bible_sync_error_detail_preserved() -> None:
+    detail = {"parent_page_id": "abc", "exception_type": "ConnectionError"}
+    exc = BootBibleSyncError(
+        kind="mcp_connect_failed", reason="net down", detail=detail
+    )
+    assert exc.detail == detail
+
+
+def test_boot_bible_sync_error_detail_defaults_to_empty_dict() -> None:
+    exc = BootBibleSyncError(kind="page_deleted", reason="missing parent")
+    assert exc.detail == {}
+
+
+def test_boot_bible_sync_error_str_includes_kind_and_reason() -> None:
+    exc = BootBibleSyncError(
+        kind="credentials_missing", reason="no api_key in [anthropic]"
+    )
+    rendered = str(exc)
+    assert "B2" in rendered
+    assert "credentials_missing" in rendered
+    assert "no api_key" in rendered
+
+
+def test_boot_bible_sync_error_caught_by_CEEException() -> None:
+    try:
+        raise BootBibleSyncError(kind="mcp_connect_failed", reason="x")
+    except CEEException as exc:
+        assert isinstance(exc, BootBibleSyncError)
+    else:
+        pytest.fail("CEEException did not catch BootBibleSyncError")
+
+
+def test_boot_bible_sync_error_caught_by_BootError() -> None:
+    try:
+        raise BootBibleSyncError(
+            kind="page_deleted",
+            reason="parent gone",
+            detail={"parent_page_id": "abc"},
+        )
+    except BootError as exc:
+        assert isinstance(exc, BootBibleSyncError)
+        assert exc.step == "B2"
+        assert exc.kind == "page_deleted"
+        assert exc.detail == {"parent_page_id": "abc"}
+    else:
+        pytest.fail("BootError did not catch BootBibleSyncError")

@@ -10,6 +10,23 @@ requires-python = ">=3.10"
 dependencies = [
     "pydantic>=2.0",
     "python-frontmatter>=1.1",
+    # Phase 2 task 6: Notion-MCP transport for ``cee sync-bible`` reaches
+    # Notion through Anthropic's Messages API + Notion MCP server (bible
+    # 14 line 273, bible 18 line 400). T6 ships orchestration + Protocol
+    # + stub; concrete ``client.beta.messages.create(..., mcp_servers=...)``
+    # glue lands in a later commit. Open lower bound; pin tighter when
+    # concrete transport stabilizes a tested version.
+    "anthropic>=0.40",
+    # Closes 4 of bible 21 task 1's missing dev/test deps (the ones T6
+    # actually benefits from). pyproject has no [project.optional-
+    # dependencies] section; per AB Adjustment A these go inline.
+    # Deferred (separate runtime deps for Phase 6+): jinja2, tiktoken.
+    # Already-transitive: pyyaml (via python-frontmatter). Not needed:
+    # tomli (Python 3.11+ ships tomllib in stdlib).
+    "pytest-cov",
+    "pytest-mock",
+    "pytest-xdist",
+    "coverage[toml]",
 ]
 
 [project.scripts]

@@ -15,7 +15,7 @@ halt_type; we do not validate shape here (per-halt schemas come later).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Literal
 
 from errors.types import HaltType, RunErrorType
 
@@ -89,6 +89,67 @@ class BootConsistencyError(BootError):
         self.drifts = drifts
         summary = f"{len(drifts)} drift(s) detected across closed enums"
         super().__init__(step="B3", reason=summary)
+
+
+# ``BootBibleSyncError`` halt-cause taxonomy. Three values today:
+#
+# * ``mcp_connect_failed`` — bible 04 §5.6 step 2 ("halt before any page
+#   fetch if connection fails"). Initial Anthropic / Notion MCP transport
+#   failure; no pages have been touched yet.
+# * ``page_deleted`` — bible 04 §9 EC9 ("Notion bible page deleted")
+#   referenced from §5.6 ("halts with restore instruction rather than
+#   treating the missing page as a transient failure").
+# * ``credentials_missing`` — INFERRED halt cause. Bible 04 §5.2 makes
+#   ``[anthropic] api_key`` a required precondition for sync-bible; bible
+#   04 §5.6 step 1 says to read it. Neither §5.2 nor §5.6's failure-
+#   handling list explicitly states "halt when missing". This kind=
+#   value treats missing credentials as a connect-equivalent halt cause
+#   (no pages can be touched) but the bible should canonize this
+#   explicitly. Tracked as downstream candidate #13 at T6 commit time.
+BootBibleSyncErrorKind = Literal[
+    "mcp_connect_failed",
+    "page_deleted",
+    "credentials_missing",
+]
+
+
+class BootBibleSyncError(BootError):
+    """Boot step B2 failed: ``cee sync-bible`` cannot proceed.
+
+    Per bible 04 §5.6 ("Failure handling"), three halt causes exist
+    where sync-bible refuses to start or stops globally instead of
+    falling through to partial-with-warning:
+
+    1. ``mcp_connect_failed`` — initial Anthropic / Notion MCP
+       reachability check failed; bible 04 §5.6 mandates "halt
+       immediately before any page is touched".
+    2. ``page_deleted`` — EC9 surfaced; the parent bible page or a
+       known child page has been deleted in Notion. Bible 04 §5.6
+       "halts with restore instruction rather than treating the
+       missing page as a transient failure".
+    3. ``credentials_missing`` — INFERRED from bible 04 §5.2
+       (credentials.toml schema requires ``[anthropic] api_key``
+       when sync-bible runs) plus bible 04 §5.6 step 1 (read
+       credentials first). Not in §5.6's explicit failure list;
+       treated here as a connect-equivalent halt. Surface as
+       downstream candidate #13.
+
+    Per-page transient failures (network blip on one of N pages,
+    write error on a single mirror file) are NOT halts — they go
+    into ``SyncResult.failed`` and the sync loop continues per
+    bible 04 §5.6's partial-with-warning default.
+    """
+
+    def __init__(
+        self,
+        *,
+        reason: str,
+        kind: BootBibleSyncErrorKind,
+        detail: dict[str, Any] | None = None,
+    ) -> None:
+        self.kind: BootBibleSyncErrorKind = kind
+        self.detail: dict[str, Any] = detail or {}
+        super().__init__(step="B2", reason=f"{kind}: {reason}")
 
 
 class ValidationError(CEEException):
