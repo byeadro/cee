@@ -55,6 +55,7 @@ from schemas.clarification_request import (
     ClarificationQuestion,
     ClarificationRequest,
 )
+from schemas.credentials import AnthropicCredentials, Credentials
 from schemas.classification import (
     CandidateScore,
     Classification,
@@ -114,6 +115,8 @@ __all__ = [
     "FormatDeclaration",
     # Phase 2 — bible sync state (gap 2 deferral; bible 04 §5.5)
     "SyncMeta",
+    # Phase 2 — user credentials (gap 8 deferral; bible 04 §5.2)
+    "Credentials",
     # User configuration — task 10 (bible 04 §5.2)
     "Config",
     "GeneralConfig",
@@ -168,4 +171,6 @@ __all__ = [
     "Source",
     # Nested — SyncMeta
     "PageEntry",
+    # Nested — Credentials
+    "AnthropicCredentials",
 ]

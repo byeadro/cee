@@ -31,9 +31,10 @@ Bible mapping (schemas):
 * **10 §6.3** — adds ``GroundingDeclaration`` to the canonical set.
 * **11 §6.2** — adds ``FormatDeclaration`` to the canonical set.
 * **04 §5.5** — adds ``SyncMeta`` (Phase 2 task 1, gap 2 deferral closed).
+* **04 §5.2** — adds ``Credentials`` (Phase 2 task 2, gap 8 deferral closed).
 * **21 §5.2 task 15** — operational build notes for this command.
 
-The reconciled count is **15 schemas**, split four ways for reporting:
+The reconciled count is **16 schemas**, split five ways for reporting:
 
 * **Pipeline artifacts (10)** — produced/consumed by the pipeline at
   runtime. Each declares ``produced_by: RoleEnum``.
@@ -42,6 +43,8 @@ The reconciled count is **15 schemas**, split four ways for reporting:
   no top-level ``produced_by``.
 * **Bible sync state (1)** — ``SyncMeta`` for ``~/cee/bible/.sync_meta.json``;
   declares ``produced_by: RoleEnum.BOOT_SEQUENCER`` (bible 04 §5.5).
+* **User config (1)** — ``Credentials`` for ``~/.cee/credentials.toml``;
+  user-managed, no ``produced_by`` (bible 04 §5.2).
 
 The 23-path layout canonical set:
 
@@ -185,12 +188,13 @@ def _is_ok(p: Path, kind: str) -> bool:
 
 # (module_name, class_name, has_produced_by, category)
 #
-# The 15 canonical artifact schemas per bible 04 §6.1 + 04 §5.5 + 10 §6.3
-# + 11 §6.2. Class names verified against the actual modules — drift here
-# means either a schema was renamed or this manifest is stale; either way
-# the importlib lookup below will catch it. Keep in module-load order so
-# the report reads top-to-bottom in the same order pipeline artifacts are
-# produced (raw_input → run_summary), with bible sync state last.
+# The 16 canonical artifact schemas per bible 04 §6.1 + 04 §5.5 + 04 §5.2
+# + 10 §6.3 + 11 §6.2. Class names verified against the actual modules —
+# drift here means either a schema was renamed or this manifest is stale;
+# either way the importlib lookup below will catch it. Keep in module-load
+# order so the report reads top-to-bottom in the same order pipeline
+# artifacts are produced (raw_input → run_summary), with bible sync state
+# and user config last.
 SCHEMA_MANIFEST: tuple[tuple[str, str, bool, str], ...] = (
     ("schemas.raw_input", "RawInput", True, "pipeline"),
     ("schemas.intent_object", "IntentObject", True, "pipeline"),
@@ -207,6 +211,7 @@ SCHEMA_MANIFEST: tuple[tuple[str, str, bool, str], ...] = (
     ("schemas.grounding_declaration", "GroundingDeclaration", False, "declaration"),
     ("schemas.format_declaration", "FormatDeclaration", False, "declaration"),
     ("schemas.sync_meta", "SyncMeta", True, "bible_sync"),
+    ("schemas.credentials", "Credentials", False, "user_config"),
 )
 
 _CATEGORY_HEADINGS: tuple[tuple[str, str], ...] = (
@@ -214,6 +219,7 @@ _CATEGORY_HEADINGS: tuple[tuple[str, str], ...] = (
     ("frontmatter", "Frontmatter schemas"),
     ("declaration", "Declaration schemas"),
     ("bible_sync", "Bible sync state schemas"),
+    ("user_config", "User config schemas"),
 )
 
 # Pad the class-name column to one space past the longest name in the
