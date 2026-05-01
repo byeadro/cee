@@ -26,6 +26,11 @@ audit/
 bible/.sync_meta.json
 promotion_queue.json
 
+# Build artifacts (regenerated on boot per bible 04 §6.5;
+# never hand-edited, never source-of-truth)
+skills/index.json
+.claude/agents/index.json
+
 # IDE
 .vscode/*
 !.vscode/launch.json
