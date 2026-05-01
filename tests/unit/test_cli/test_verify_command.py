@@ -420,34 +420,35 @@ def test_render_item_missing_uses_x_mark_and_label(tmp_path: Path) -> None:
 
 
 def test_verify_schemas_returns_zero_when_all_valid() -> None:
-    """The 14 real schemas on disk must all validate cleanly."""
+    """The 15 real schemas on disk must all validate cleanly."""
     assert _verify_schemas() == 0
 
 
-def test_verify_schemas_walks_all_14_schemas(
+def test_verify_schemas_walks_all_15_schemas(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Bible 04 §6.1 + 10 §6.3 + 11 §6.2 → 14 schemas total."""
+    """Bible 04 §6.1 + 04 §5.5 + 10 §6.3 + 11 §6.2 → 15 schemas total."""
     _verify_schemas()
     out = capsys.readouterr().out
-    assert "14 of 14" in out
+    assert "15 of 15" in out
 
 
-def test_verify_schemas_categorizes_pipeline_vs_frontmatter_vs_declaration(
+def test_verify_schemas_categorizes_pipeline_vs_frontmatter_vs_declaration_vs_bible_sync(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """All three category headings appear with correct counts."""
+    """All four category headings appear with correct counts."""
     _verify_schemas()
     out = capsys.readouterr().out
     assert "Pipeline artifact schemas (10):" in out
     assert "Frontmatter schemas (2):" in out
     assert "Declaration schemas (2):" in out
+    assert "Bible sync state schemas (1):" in out
 
 
 def test_verify_schemas_summary_format(capsys: pytest.CaptureFixture[str]) -> None:
     _verify_schemas()
     out = capsys.readouterr().out
-    assert "Summary: 14 of 14 schemas valid." in out
+    assert "Summary: 15 of 15 schemas valid." in out
 
 
 def test_verify_schemas_passed_message(
@@ -490,8 +491,8 @@ def test_verify_schemas_lists_class_name_for_each_schema(
 # ─── Schema verifier — manifest invariants ─────────────────────────────
 
 
-def test_schema_manifest_count_is_14() -> None:
-    assert len(SCHEMA_MANIFEST) == 14
+def test_schema_manifest_count_is_15() -> None:
+    assert len(SCHEMA_MANIFEST) == 15
 
 
 def test_schema_manifest_pipeline_count_is_10() -> None:
@@ -507,6 +508,11 @@ def test_schema_manifest_frontmatter_count_is_2() -> None:
 def test_schema_manifest_declaration_count_is_2() -> None:
     declaration = [e for e in SCHEMA_MANIFEST if e[3] == "declaration"]
     assert len(declaration) == 2
+
+
+def test_schema_manifest_bible_sync_count_is_1() -> None:
+    bible_sync = [e for e in SCHEMA_MANIFEST if e[3] == "bible_sync"]
+    assert len(bible_sync) == 1
 
 
 def test_schema_manifest_pipeline_entries_have_produced_by() -> None:

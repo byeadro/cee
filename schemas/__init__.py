@@ -92,6 +92,7 @@ from schemas.run_error import RunError as RunErrorArtifact
 from schemas.run_summary import RunSummary
 from schemas.skill_frontmatter import SkillFrontmatter
 from schemas.skill_set import SkillRef, SkillSet
+from schemas.sync_meta import PageEntry, SyncMeta
 
 __all__ = [
     # Top-level artifact models — task 8a
@@ -111,6 +112,8 @@ __all__ = [
     "AgentFrontmatter",
     "GroundingDeclaration",
     "FormatDeclaration",
+    # Phase 2 — bible sync state (gap 2 deferral; bible 04 §5.5)
+    "SyncMeta",
     # User configuration — task 10 (bible 04 §5.2)
     "Config",
     "GeneralConfig",
@@ -163,4 +166,6 @@ __all__ = [
     "ClarificationQuestion",
     # Nested — GroundingDeclaration
     "Source",
+    # Nested — SyncMeta
+    "PageEntry",
 ]

@@ -30,15 +30,18 @@ Bible mapping (schemas):
 * **04 §6.1** — original 12 artifact schemas (RawInput → AgentFrontmatter).
 * **10 §6.3** — adds ``GroundingDeclaration`` to the canonical set.
 * **11 §6.2** — adds ``FormatDeclaration`` to the canonical set.
+* **04 §5.5** — adds ``SyncMeta`` (Phase 2 task 1, gap 2 deferral closed).
 * **21 §5.2 task 15** — operational build notes for this command.
 
-The reconciled count is **14 schemas**, split three ways for reporting:
+The reconciled count is **15 schemas**, split four ways for reporting:
 
 * **Pipeline artifacts (10)** — produced/consumed by the pipeline at
   runtime. Each declares ``produced_by: RoleEnum``.
 * **Frontmatter (2)** — describe ``.md`` files on disk; no ``produced_by``.
 * **Declaration (2)** — embedded inside ``FinalPrompt``/``RunSummary``;
   no top-level ``produced_by``.
+* **Bible sync state (1)** — ``SyncMeta`` for ``~/cee/bible/.sync_meta.json``;
+  declares ``produced_by: RoleEnum.BOOT_SEQUENCER`` (bible 04 §5.5).
 
 The 23-path layout canonical set:
 
@@ -182,12 +185,12 @@ def _is_ok(p: Path, kind: str) -> bool:
 
 # (module_name, class_name, has_produced_by, category)
 #
-# The 14 canonical artifact schemas per bible 04 §6.1 + 10 §6.3 + 11 §6.2.
-# Class names verified against the actual modules — drift here means
-# either a schema was renamed or this manifest is stale; either way the
-# importlib lookup below will catch it. Keep in module-load order so the
-# report reads top-to-bottom in the same order pipeline artifacts are
-# produced (raw_input → run_summary).
+# The 15 canonical artifact schemas per bible 04 §6.1 + 04 §5.5 + 10 §6.3
+# + 11 §6.2. Class names verified against the actual modules — drift here
+# means either a schema was renamed or this manifest is stale; either way
+# the importlib lookup below will catch it. Keep in module-load order so
+# the report reads top-to-bottom in the same order pipeline artifacts are
+# produced (raw_input → run_summary), with bible sync state last.
 SCHEMA_MANIFEST: tuple[tuple[str, str, bool, str], ...] = (
     ("schemas.raw_input", "RawInput", True, "pipeline"),
     ("schemas.intent_object", "IntentObject", True, "pipeline"),
@@ -203,12 +206,14 @@ SCHEMA_MANIFEST: tuple[tuple[str, str, bool, str], ...] = (
     ("schemas.agent_frontmatter", "AgentFrontmatter", False, "frontmatter"),
     ("schemas.grounding_declaration", "GroundingDeclaration", False, "declaration"),
     ("schemas.format_declaration", "FormatDeclaration", False, "declaration"),
+    ("schemas.sync_meta", "SyncMeta", True, "bible_sync"),
 )
 
 _CATEGORY_HEADINGS: tuple[tuple[str, str], ...] = (
     ("pipeline", "Pipeline artifact schemas"),
     ("frontmatter", "Frontmatter schemas"),
     ("declaration", "Declaration schemas"),
+    ("bible_sync", "Bible sync state schemas"),
 )
 
 # Pad the class-name column to one space past the longest name in the
