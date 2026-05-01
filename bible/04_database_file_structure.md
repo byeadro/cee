@@ -219,6 +219,12 @@ default_target = "claude_code"     # or claude_ai, api
 api_enabled = false
 api_model = "claude-opus-4-7"
 ```
+#### `credentials.toml` schema:
+```toml
+[anthropic]
+api_key = "sk-ant-..."             # Anthropic API key, read by APIExecutor (Phase 2)
+```
+Required only when `[phase2] api_enabled = true` (per bible 14 §6.2 + §9 EC12); commented out in Phase 1 (per bible 21 task 10). `chmod 600`; user-managed; CEE never auto-writes this file. Notion MCP authentication is configured at the Claude Code / Anthropic platform layer (per bible 21 §5.1 prerequisites), not via this file.
 ### 5.3 Obsidian mirror layout (`~/SecondBrain/cee/`)
 ```javascript
 ~/SecondBrain/cee/
