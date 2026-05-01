@@ -301,6 +301,44 @@ Two drift checks are enabled by this file:
 - **Notion-side drift:** `pages[X].notion_last_edited_time` is compared against the live Notion `last_edited_time` for that page. Mismatch triggers `cee sync-bible` if `auto_sync = true` (per §5.2), else halts (per bible 00 §12 B2).
 - **Mirror-side drift:** `pages[X].content_sha256` is compared against the sha256 of the local mirror file. Mismatch indicates a manual edit to the mirror and triggers a drift warning per §4 Rule 7.
 Written exclusively by `BOOT_SEQUENCER` via `cee sync-bible` (per bible 02 §7.13); bypasses `PERSISTENCE_WRITER`. The Pydantic model lives at `~/cee/schemas/sync_meta.py` per §6.1.
+### 5.6 Bible sync workflow (`cee sync-bible`)
+The Notion-to-filesystem sync that materializes bible pages 00–22 (and any other children of the parent page) into `~/cee/bible/<NN>_<slug>.md`. Implemented at `~/cee/boot/bible_sync.py` (per §11). Executed by `BOOT_SEQUENCER` (per bible 02 §7.13) via Anthropic's Notion MCP; CEE-side credentials are limited to `[anthropic] api_key` per §5.2 (Notion MCP authentication is platform-level per bible 21 §5.1).
+**Triggered by:**
+- **Boot-time auto-sync.** Boot step B2 (per bible 00 §12) compares per-page `notion_last_edited_time` in `.sync_meta.json` against live Notion. On drift, runs `cee sync-bible` automatically if `auto_sync = true` in `~/.cee/config.toml` (per §5.2), else halts with instruction to run it manually.
+- **Manual CLI invocation.** `OPERATOR` runs `cee sync-bible` directly (per bible 00 §11 CLI surface). Always allowed; force-syncs regardless of `auto_sync`.
+**Steps:**
+1. Read `[anthropic] api_key` from `~/.cee/credentials.toml` (per §5.2).
+2. Connect to Notion MCP (auth resolved at platform layer per bible 21 §5.1); halt before any page fetch if connection fails.
+3. Fetch the parent bible page (`notion_bible_root_id` per §5.2) and enumerate its child pages.
+4. Capture `last_synced` once, at sync start (per bible 03 Rule 6 — time stops at capture).
+5. For each child page:
+    - Fetch the page's `last_edited_time` from Notion.
+    - Compare to `pages[<NN>_<slug>].notion_last_edited_time` in the loaded `.sync_meta.json` (per §5.5).
+    - If different, or the page is not in `.sync_meta.json`: fetch the page's full content; normalize to markdown (rules deferred — see below); write to `~/cee/bible/<NN>_<slug>.md` via `atomic_write_text` (per §11); update the page's entry in the in-memory `.sync_meta.json` with current `notion_page_id`, `notion_last_edited_time`, `local_path`, and recomputed `content_sha256`.
+    - If same: skip.
+6. After all pages processed, write the updated `.sync_meta.json` atomically with the captured `last_synced`.
+7. Append summary entries to audit logs (per "Audit trail" below).
+
+`.sync_meta.json` is written last so a crash mid-sync leaves the metadata file consistent with whichever pages were already written successfully.
+**Failure handling:**
+Default is partial-with-warning. Sync-bible attempts every page and continues on individual failures; per-page failures (network, MCP error, write error) are logged to `roles.log` and the loop proceeds to page N+1. After all pages are attempted, `.sync_meta.json` is written reflecting only the successfully synced pages; the CLI exits with non-zero status and prints a summary of successes and failures. Exception: if the initial Notion MCP connection fails (auth, network, server unreachable), sync-bible halts immediately before any page is touched — there is no partial state to preserve. EC9 (Notion bible page deleted, per §9) halts with restore instruction rather than treating the missing page as a transient failure.
+**Audit trail:**
+Each run writes to three logs per bible 12 §5.8, all hash-chained JSONL:
+- **`~/cee/audit/cli.log`** (manual invocation only): one entry `{"actor": "OPERATOR", "event": "cli_invoke", "details": {"command": "cee sync-bible"}}`.
+- **`~/cee/audit/boot.log`** (boot-triggered only): one entry at B2 `{"actor": "BOOT_SEQUENCER", "event": "b2_drift_detected", "details": {"trigger": "auto_sync"}}`.
+- **`~/cee/audit/roles.log`** (always, both triggers; actor `BOOT_SEQUENCER` throughout):
+    - `sync_bible_start` with `details: {"trigger": "boot_auto" | "cli_manual", "page_count_expected": <N>}`
+    - per successfully synced page: `sync_bible_page_synced` with `details: {"page_slug": "<NN>_<slug>", "notion_last_edited_time": "<ISO>", "content_sha256": "<hex>"}`
+    - per failed page: `sync_bible_page_failed` with `details: {"page_slug": "<NN>_<slug>", "error_type": "<type>"}`
+    - `sync_bible_end` with `details: {"trigger": "<...>", "synced_count": <N>, "failed_count": <N>, "duration_ms": <N>}`
+
+**Substrate boundary:**
+Sync-bible writes only to `~/cee/bible/*.md` and `~/cee/bible/.sync_meta.json` — exactly the surface canonized for `BOOT_SEQUENCER` in bible 02 §7.13. It does not write to `~/SecondBrain/cee/bible/`; the Obsidian bible mirror is rebuilt downstream by `OBSIDIAN_WRITER` on next Run (per §10.10) or manually via `cee resync` (per §10.4).
+**Deferred to Phase 2 implementation** (spec back-ported on phase close):
+- Notion-block-to-markdown normalization rules (depend on what the Notion API returns).
+- Mirror-side drift handling: UX for `content_sha256` mismatch (halt-and-ask vs. force-overwrite).
+- Retry policy with exponential backoff for transient Notion MCP errors.
+- Rate-limit handling for the Notion API.
 ---
 ## 6. Data / Inputs Needed
 ### 6.1 Schemas (`~/cee/schemas/`)
@@ -517,7 +555,7 @@ No automatic cleanup. `cee archive-runs --older-than 90d` moves old Runs to `~/c
 - **Path constants:** all paths in code reference `~/cee/paths.py` — a single module exporting `Path` constants. No string concatenation of paths.
 - **Atomic write helper:** `~/cee/persistence/atomic.py` exports `atomic_write_json(path, data)` and `atomic_write_text(path, text)`. Every write goes through these.
 - **Index rebuild:** `~/cee/skill_engine/registry.py` and `~/cee/agent_selector/registry.py` each export `rebuild() -> Index`. Called by boot.
-- **Bible sync:** `cee sync-bible` is implemented in `~/cee/boot/bible_sync.py`. Uses Notion MCP. Writes only to `~/cee/bible/` and `~/cee/bible/.sync_meta.json`.
+- **Bible sync:** `cee sync-bible` is implemented in `~/cee/boot/bible_sync.py`. Uses Notion MCP. Writes only to `~/cee/bible/` and `~/cee/bible/.sync_meta.json`. Operational spec: §5.6.
 - **Test fixtures:** `~/cee/tests/fixtures/` contains miniature versions of the layout for unit tests. Tests do not write to the real `~/cee/`.
 - **Layout invariants:** a test in `~/cee/tests/unit/test_layout.py` walks `~/cee/` after a fresh boot and asserts every required directory exists and has expected permissions.
 - **No global writes:** modules import path constants; they do not call `os.makedirs` outside `paths.py`.
