@@ -82,6 +82,14 @@ def test_subdirs_under_cee_root() -> None:
         assert paths.CEE_ROOT in p.parents, f"{p} is not under CEE_ROOT"
 
 
+def test_template_config_file_under_template_dir() -> None:
+    """The default config template lives under TEMPLATE_DIR with the
+    bible-mandated ``.default`` suffix (bible 04 §10.7)."""
+    assert paths.TEMPLATE_CONFIG_FILE.parent == paths.TEMPLATE_DIR
+    assert paths.TEMPLATE_CONFIG_FILE.name == "config.toml.default"
+    assert paths.CEE_ROOT in paths.TEMPLATE_CONFIG_FILE.parents
+
+
 def test_user_config_under_home() -> None:
     assert paths.USER_CONFIG_DIR == Path.home() / ".cee"
     user_config_files = [

@@ -31,6 +31,26 @@ prompt-tag declarations):
 
 from schemas.agent_frontmatter import AgentFrontmatter
 from schemas.agent_plan import AgentPlan, AgentRef
+from schemas.config import (
+    AgentSelectorConfig,
+    AgentsConfig,
+    ClassifierConfig,
+    ClaudeCodeConfig,
+    Config,
+    ErrorsConfig,
+    ExecutorConfig,
+    GeneralConfig,
+    GroundingConfig,
+    InterpreterConfig,
+    ObsidianConfig,
+    OutputFormatConfig,
+    PathsConfig,
+    Phase2Config,
+    PromptBuilderConfig,
+    SecurityConfig,
+    SkillEngineConfig,
+    SkillsConfig,
+)
 from schemas.clarification_request import (
     ClarificationQuestion,
     ClarificationRequest,
@@ -91,6 +111,25 @@ __all__ = [
     "AgentFrontmatter",
     "GroundingDeclaration",
     "FormatDeclaration",
+    # User configuration — task 10 (bible 04 §5.2)
+    "Config",
+    "GeneralConfig",
+    "PathsConfig",
+    "InterpreterConfig",
+    "ClassifierConfig",
+    "AgentSelectorConfig",
+    "SkillEngineConfig",
+    "SkillsConfig",
+    "AgentsConfig",
+    "PromptBuilderConfig",
+    "OutputFormatConfig",
+    "GroundingConfig",
+    "SecurityConfig",
+    "ObsidianConfig",
+    "ClaudeCodeConfig",
+    "ExecutorConfig",
+    "Phase2Config",
+    "ErrorsConfig",
     # Nested — RawInput
     "Attachment",
     # Nested — Classification

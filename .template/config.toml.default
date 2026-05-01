@@ -1,0 +1,221 @@
+# CEE configuration file
+#
+# Authoritative reference: System Design Bible
+#   - 04 §5.2 (canonical layout)
+#   - 04 §10.7 (this file is the regeneration source for ~/.cee/config.toml)
+#
+# Edit ~/.cee/config.toml — never this file. The OPERATOR-editable copy at
+# ~/.cee/config.toml is generated from this template on first boot. Defaults
+# below are bible-mandated; comments cite the section that fixes each value.
+#
+# Adding a new section or field requires a bible edit first. The Config
+# Pydantic model in ~/cee/schemas/config.py is the runtime contract; the
+# bible-grounding test asserts a 1:1 match between this template's section
+# headers and the Config model's section attributes.
+
+# ─── [general] ─────────────────────────────────── bible 04 §5.2 ──
+[general]
+# Auto-sync the bible mirror from Notion when boot detects drift.
+# Bible 00 §12 B2 + bible 01 §F-recovery: when false, boot halts on drift
+# instead of fetching, giving the OPERATOR a chance to inspect first.
+auto_sync = true
+# Force a full boot every Run, bypassing any warm-cache optimizations.
+# Bible 00 §6 ("Idempotent boot") — left false in normal operation.
+fresh_boot = false
+
+# ─── [paths] ───────────────────────────────────── bible 04 §5.2 ──
+[paths]
+# Override the CEE filesystem root. Default matches paths.CEE_ROOT.
+cee_root = "~/cee"
+# Parent Obsidian vault root. CEE writes its mirror under this path's
+# `cee/` subdirectory (see [obsidian].vault_root for the resolved CEE
+# subdir). Bible 04 §5.3 fixes the `cee/`-within-vault convention.
+obsidian_vault = "~/SecondBrain"
+# Notion ID of the System Design Bible parent page. Bible 14 §4 Rule 8
+# locates the bible by ID, not title, so renames in Notion are safe.
+notion_bible_root_id = "352e8536-d882-8050-aff6-f1dbcff68a09"
+
+# ─── [interpreter] ─────────────────────────────── bible 04 §5.2 + 03 §5.2 ──
+[interpreter]
+# ambiguity_score > this value emits a ClarificationRequest and halts the
+# Run with PAUSED_FOR_CLARIFICATION (bible 03 §5.2, bible 19 §5.4).
+ambiguity_clarification_threshold = 0.6
+# ambiguity_score in [this, clarification_threshold) continues silently
+# but flags implicit_assumptions for visible inclusion in the FinalPrompt
+# (bible 03 §5.2 — the "soft warning" band).
+ambiguity_visible_threshold = 0.3
+
+# ─── [classifier] ──────────────────────────────── bible 08 §6.2 ──
+[classifier]
+# Confidence delta below which two task_type candidates trigger
+# AMBIGUOUS_CLASSIFICATION (bible 19 §5.1).
+ambiguity_halt_delta = 0.10
+# Force human gate when destructive_potential AND irreversibility are
+# inferred. Bible 08 Rule 5 hard-cap.
+human_gate_for_destructive_irreversible = true
+# Force human gate when external effects are detected (e.g. API calls).
+# Bible 08 Rule 5 hard-cap.
+human_gate_for_external_effects = true
+# When true, complexity components C/D > 5 escalate LOW → MEDIUM. Bible
+# 08 §10.10 cross-validator behaviour.
+low_tier_escalation_strict = true
+
+# ─── [agent_selector] ──────────────────────────── bible 06 §6.3 ──
+[agent_selector]
+# Score >= this threshold reuses the matched agent. Bible 06 §6.3.
+description_match_threshold = 0.65
+# Score < this threshold triggers agent generation. Between the two is
+# the "ask" zone where the OPERATOR is consulted. Bible 06 §6.3.
+generation_threshold = 0.50
+# Window for the "recently used" bonus applied during ranking. Bible
+# 06 §6.3.
+recent_usage_bonus_window_days = 30
+
+# ─── [skill_engine] ────────────────────────────── bible 04 §5.2 + 07 §6.3 ──
+[skill_engine]
+# match_score >= this is the REUSE zone (bible 07 §6.3 / Rule 4).
+reuse_threshold = 0.85
+# match_score in [this, reuse) is the ASK zone (bible 07 §6.3 / Rule 4).
+ask_threshold = 0.60
+# Levenshtein distance below this flags two candidate slugs as duplicates.
+# Bible 07 §6.3.
+duplicate_levenshtein_threshold = 0.10
+# Skills used at least this many times jump the promotion queue. Bible
+# 07 §6.3.
+min_reuse_count_for_promotion_priority = 3
+
+# ─── [skills] ──────────────────────────────────── bible 15 §6.3 ──
+[skills]
+# Maximum body word count for a SKILL.md (excludes frontmatter). Bible
+# 15 §6.3.
+max_body_words = 1500
+# Maximum total line count for a SKILL.md including frontmatter. Bible
+# 15 §6.3.
+max_total_lines = 2000
+# Validator rejects Skill writes whose CHANGELOG entry doesn't match the
+# bumped frontmatter version. Bible 15 §6.3.
+enforce_changelog_version_match = true
+
+# ─── [agents] ──────────────────────────────────── bible 16 §6.3 ──
+[agents]
+# Body word ceiling for "simple" posture agents (primary, specialist).
+# Bible 16 §6.3.
+max_body_words_simple = 500
+# Body word ceiling for "complex" posture agents (orchestrator, critic
+# with multi-pass logic). Bible 16 §6.3.
+max_body_words_complex = 800
+# Run an LLM-backed body coherence check during agent generation. Bible
+# 16 §6.3 — defaults to false in CI, true in OPERATOR sessions.
+enable_llm_body_validation = false
+
+# ─── [prompt_builder] ──────────────────────────── bible 09 §6.2 ──
+[prompt_builder]
+# Token headroom kept under the executor's hard limit during chunking.
+# Bible 09 §6.2.
+safety_buffer_tokens = 4000
+# Smooth role text across nested agent/Skill descriptions for coherence.
+# Bible 09 §6.2.
+enable_role_smoothing = true
+# Chunking algorithm. Only "context_then_plan" exists in Phase 1; bible
+# 09 §6.2 reserves the slot for future strategies.
+chunking_strategy = "context_then_plan"
+
+# ─── [output_format] ──────────────────────────── bible 10 §6.3 ──
+[output_format]
+# When the executor's output fails the format validator, automatically
+# rerun the Run with a corrective preamble. Bible 10 §6.3.
+auto_rerun_on_hard_fail = false
+# Use an LLM to evaluate "acceptance" criteria (vs. deterministic
+# checks). Disable for CI determinism. Bible 10 §6.3.
+acceptance_check_uses_llm = true
+# Word ceiling for "prose_short" output_format. Bible 10 §6.3.
+prose_short_max_words = 500
+# Word ceiling for "prose_long" output_format. Bible 10 §6.3.
+prose_long_max_words = 5000
+
+# ─── [grounding] ──────────────────────────────── bible 11 §6.2 ──
+[grounding]
+# Fraction of grounded claims that must carry a citation; values below
+# this fail the grounding gate. Bible 11 §6.2.
+coverage_threshold = 0.90
+# Automatically rerun the Run when grounding violations are detected.
+# Bible 11 §6.2.
+auto_rerun_on_violation = false
+# Use an LLM to check "claim X is supported by source Y". Bible 11 §6.2.
+acceptance_check_uses_llm = true
+# Default citation rendering style; per-Run overrides happen via the
+# IntentObject. Bible 11 §6.2.
+default_citation_format = "inline_bracket"
+
+# ─── [security] ────────────────────────────────── bible 12 §6.2 ──
+[security]
+# How long an AWAITING_DESTRUCTIVE_CONFIRMATION halt may sit before the
+# Run is auto-failed. Bible 12 §6.2.
+confirmation_timeout_hours = 24
+# Apply the strictest redaction profile to all Notion writes. Bible
+# 12 §6.2 — should remain true.
+notion_strict_redaction = true
+# Run a redaction pass over Obsidian notes before writing. Bible 12
+# §6.2.
+obsidian_redaction_pass = true
+# Maintain a hash chain on the audit log so tampering is detectable.
+# Bible 12 §6.2.
+audit_hash_chain = true
+# After this many days, raw_input.json files emit a soft-warning during
+# `cee verify`. Not auto-purged. Bible 12 §6.2.
+purge_raw_input_after_days = 90
+
+# ─── [obsidian] ───────────────────────────────── bible 13 §6.2 ──
+[obsidian]
+# CEE-within-vault subdirectory — the resolved location where CEE writes
+# its mirror notes. Distinct from [paths].obsidian_vault, which is the
+# parent vault root; this field is the parent + the bible-04 §5.3
+# `cee/` subdir convention. Both are bible-canonical and intentionally
+# duplicated.
+vault_root = "~/SecondBrain/cee"
+# Re-mirror everything daily on a schedule (expensive). Bible 13 §6.2.
+enable_daily_sync = false
+# Rebuild Obsidian dataview indexes after every Run (also expensive).
+# Bible 13 §6.2.
+regenerate_indexes_on_run = false
+# Detect and preserve OPERATOR edits on CEE-managed Obsidian notes.
+# Bible 13 §6.2 (experimental).
+preserve_manual_edits = true
+
+# ─── [claude_code] ────────────────────────────── bible 14 §6.4 ──
+[claude_code]
+# Auto-regenerate ~/cee/CLAUDE.md whenever bible / agent / skill surfaces
+# change. Bible 14 §6.4.
+claude_md_auto_sync = false
+# Set by `cee init` once Claude Code hooks are installed. Bible 14 §6.4 —
+# the OPERATOR can toggle this off without uninstalling the hook files.
+hooks_installed = false
+# Set by `cee init` once the slash-command files are installed. Bible
+# 14 §6.4.
+slash_commands_installed = false
+
+# ─── [executor] ────────────────────────────────── bible 04 §5.2 ──
+[executor]
+# Default target for the Run pipeline's executor adapter. One of
+# "claude_code", "claude_ai", "api". Bible 04 §5.2.
+default_target = "claude_code"
+
+# ─── [phase2] ──────────────────────────────────── bible 04 §5.2 + 14 §4 ──
+[phase2]
+# Phase 2 (Anthropic API) is opt-in. Bible 14 Rule 10 — defaults to
+# false; the OPERATOR must deliberately enable.
+api_enabled = false
+# Default Anthropic model identifier when api_enabled = true. Bible
+# 04 §5.2.
+api_model = "claude-opus-4-7"
+
+# ─── [errors] ──────────────────────────────────── bible 19 §6.2 ──
+[errors]
+# Render full halt/error messages with cause + recovery block. Bible
+# 19 §6.2.
+verbose_messages = true
+# On halt, automatically open the Run directory in the OPERATOR's
+# default file manager. Bible 19 §6.2.
+auto_open_run_dir_on_halt = false
+# Promote warnings to errors (CI / strict-mode behaviour). Bible 19 §6.2.
+treat_warnings_as_errors = false

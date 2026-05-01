@@ -40,6 +40,12 @@ GOLDEN_RUNS_DIR: Path = RUNS_DIR / "golden"
 AUDIT_DIR: Path = CEE_ROOT / "audit"
 AUDIT_ARCHIVE_DIR: Path = AUDIT_DIR / "archive"
 TEMPLATE_DIR: Path = CEE_ROOT / ".template"
+# Default config template — copied to USER_CONFIG_DIR/config.toml on first
+# boot. Authoritative reference: bible 04 §10.7 ("Default config can be
+# regenerated from ``~/cee/.template/config.toml.default``"). The ``.default``
+# suffix marks this file as the read-only template; the OPERATOR-editable
+# copy lives at :data:`CONFIG_FILE`.
+TEMPLATE_CONFIG_FILE: Path = TEMPLATE_DIR / "config.toml.default"
 TESTS_DIR: Path = CEE_ROOT / "tests"
 TESTS_FIXTURES_DIR: Path = TESTS_DIR / "fixtures"
 
