@@ -28,6 +28,7 @@ import argparse
 import sys
 
 from cli.commands.init import cmd_init
+from cli.commands.verify import cmd_verify
 from errors import BootError
 
 
@@ -58,6 +59,18 @@ def main(argv: list[str] | None = None) -> int:
         help="Initialize CEE installation (~/.cee/, Obsidian vault, audit logs)",
     )
     init_parser.set_defaults(func=cmd_init)
+
+    verify_parser = subparsers.add_parser(
+        "verify",
+        help="Verify CEE installation (layout, schemas, ...)",
+    )
+    verify_parser.add_argument(
+        "--layout",
+        action="store_true",
+        help="Verify directory layout (existence checks against bible "
+        "04 §5.1, §5.2, §5.3 + 12 §5.8)",
+    )
+    verify_parser.set_defaults(func=cmd_verify)
 
     args = parser.parse_args(argv)
     try:

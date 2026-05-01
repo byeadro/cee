@@ -114,3 +114,36 @@ def test_main_unexpected_error_stderr_includes_exception_type(
     captured = capsys.readouterr()
     # Type name is included so the OPERATOR can grep for it in shell history.
     assert re.search(r"UNEXPECTED ERROR: RuntimeError: oops", captured.err)
+
+
+def test_main_with_verify_layout_invokes_cmd_verify() -> None:
+    """``cee verify --layout`` dispatches to cmd_verify with layout=True."""
+    fake_cmd = MagicMock(return_value=0)
+    with patch.object(main_module, "cmd_verify", fake_cmd):
+        rc = main(["verify", "--layout"])
+    assert rc == 0
+    fake_cmd.assert_called_once()
+    call_args = fake_cmd.call_args
+    ns = call_args.args[0]
+    assert ns.command == "verify"
+    assert ns.layout is True
+
+
+def test_main_with_verify_no_flag_invokes_cmd_verify_layout_false() -> None:
+    """``cee verify`` (no --layout) still reaches cmd_verify; layout=False."""
+    fake_cmd = MagicMock(return_value=2)
+    with patch.object(main_module, "cmd_verify", fake_cmd):
+        rc = main(["verify"])
+    assert rc == 2
+    ns = fake_cmd.call_args.args[0]
+    assert ns.layout is False
+
+
+def test_main_verify_help_includes_layout_option(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``cee verify --help`` mentions the --layout flag."""
+    with pytest.raises(SystemExit):
+        main(["verify", "--help"])
+    out = capsys.readouterr().out
+    assert "--layout" in out
