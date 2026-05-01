@@ -298,6 +298,7 @@ Bible reconciliations surfaced during Phase 2 prep (commit `8963612`'s body). Di
 4. **Bible 02 §7.13 could optionally back-ref bible 04 §5.6** for sync-bible operational details. Defer to: next bible-edit pass; optional polish.
 5. **Bible 03 Rule 6 scope** could broaden to cover boot-time external reads (sync-bible's `last_synced` capture), not just `RawInput.timestamp`. Defer to: next bible-edit pass; principle generalization.
 6. **Phase 2 close back-ports four §5.6 deferred items**: Notion-block-to-markdown normalization rules, mirror-side drift UX (halt-and-ask vs. force-overwrite), retry policy with exponential backoff, rate-limit handling. Defer to: Phase 2 gate (Task 11 trigger).
+7. **Bible 06 §5.2.1 ↔ Bible 16 §5.2 `AgentFrontmatter` contract drift.** Bible 06 specifies 7 required + 4 optional fields with `created_by_run` ∈ {run_id, manual}. Bible 16 specifies 9 required + 11 optional fields with `created_by_run` ∈ {run_id, manual, seed}. Phase 1's `AgentFrontmatter` schema follows bible 06 (commit history). Empty-catalog Phase 2 work is unaffected; Phase 5 seed-agent work (12-agent seed catalog) requires reconciliation first — pick the canonical bible, align the other, update the schema. Defer to: Phase 5 prep.
 
 ---
 
