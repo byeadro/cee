@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from roles import RoleEnum
 from schemas import ExecutionStrategy, StepSpec
 
 
@@ -53,7 +54,7 @@ def test_execution_strategy_full_valid() -> None:
         checkpoints=[2],
         stop_conditions=["any step exceeds 10000 tokens", "critic blocks"],
         estimated_cost_tokens=5000,
-        produced_by="STRATEGY_BUILDER",
+        produced_by=RoleEnum.STRATEGY_BUILDER,
     )
     assert len(obj.steps) == 3
     assert obj.checkpoints == [2]

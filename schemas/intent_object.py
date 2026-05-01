@@ -11,6 +11,8 @@ from typing import Annotated, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from roles import RoleEnum
+
 
 class IntentObject(BaseModel):
     """The interpreter's structured extraction of OPERATOR intent.
@@ -45,5 +47,4 @@ class IntentObject(BaseModel):
         "other",
     ]
     raw_signals: list[str] = Field(default_factory=list)
-    # TODO task 9: replace with RoleEnum once roles/__init__.py defines it.
-    produced_by: str = "INTERPRETER"
+    produced_by: RoleEnum = RoleEnum.INTERPRETER

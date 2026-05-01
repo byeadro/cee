@@ -12,6 +12,8 @@ from typing import Annotated, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from roles import RoleEnum
+
 # ISO 8601 sha256 hex check (64 lowercase hex chars).
 _SHA256_PATTERN = r"^[0-9a-f]{64}$"
 
@@ -62,5 +64,4 @@ class RawInput(BaseModel):
     source: Literal["cli", "api", "resume", "replay"]
     attachments: list[Attachment] = Field(default_factory=list)
     target_executor: Literal["claude_code", "claude_ai", "api"] = "claude_code"
-    # TODO task 9: replace with RoleEnum once roles/__init__.py defines it.
-    produced_by: str = "OPERATOR"
+    produced_by: RoleEnum = RoleEnum.OPERATOR

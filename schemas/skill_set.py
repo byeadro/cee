@@ -16,6 +16,8 @@ from typing import Annotated, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from roles import RoleEnum
+
 # Bible 15 §5.1: kebab-case ASCII, 3–60 chars.
 _KEBAB_CASE_PATTERN = r"^[a-z][a-z0-9-]{1,58}[a-z0-9]$"
 
@@ -101,5 +103,4 @@ class SkillSet(BaseModel):
 
     skills: list[SkillRef] = Field(default_factory=list)
     newly_generated: list[SkillRef] = Field(default_factory=list)
-    # TODO task 9: replace with RoleEnum once roles/__init__.py defines it.
-    produced_by: str = "SKILL_ENGINE"
+    produced_by: RoleEnum = RoleEnum.SKILL_ENGINE

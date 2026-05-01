@@ -13,6 +13,8 @@ from typing import Annotated, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from roles import RoleEnum
+
 # Bible 15 §5.1: kebab-case ASCII, 3–60 chars, starts with letter,
 # ends with letter or digit. Same regex applies to agent slugs (bible 06 §11
 # delegates slug rules to the shared kebab-case convention).
@@ -66,8 +68,7 @@ class AgentPlan(BaseModel):
 
     agents: Annotated[list[AgentRef], Field(min_length=1)]
     coordination: Annotated[str, Field(min_length=1)]
-    # TODO task 9: replace with RoleEnum once roles/__init__.py defines it.
-    produced_by: str = "AGENT_SELECTOR"
+    produced_by: RoleEnum = RoleEnum.AGENT_SELECTOR
 
     @model_validator(mode="after")
     def _check_has_lead(self) -> "AgentPlan":

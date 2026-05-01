@@ -33,6 +33,8 @@ from typing import Annotated, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from roles import RoleEnum
+
 TargetExecutor = Literal["claude_ai", "claude_code", "api"]
 ComplexityTier = Literal["LOW", "MEDIUM", "HIGH", "EXTREME"]
 
@@ -351,8 +353,7 @@ class FinalPrompt(BaseModel):
     run_metadata: RunMetadata
     chunking: Chunking | None = None
 
-    # TODO task 9: replace with RoleEnum once roles/__init__.py defines it.
-    produced_by: str = "PROMPT_BUILDER"
+    produced_by: RoleEnum = RoleEnum.PROMPT_BUILDER
 
     def to_xml(self) -> str:
         """Render this model as XML matching bible 05 §5.1 structure.

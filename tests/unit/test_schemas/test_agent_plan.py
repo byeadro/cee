@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from roles import RoleEnum
 from schemas import AgentPlan, AgentRef
 
 
@@ -50,7 +51,7 @@ def test_agent_plan_full_valid() -> None:
             AgentRef(**_valid_agent_ref("code-optimizer", "optimizer")),
         ],
         coordination="Primary executes; critic reviews; optimizer tightens.",
-        produced_by="AGENT_SELECTOR",
+        produced_by=RoleEnum.AGENT_SELECTOR,
     )
     assert len(obj.agents) == 3
 

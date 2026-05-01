@@ -26,6 +26,8 @@ from typing import Annotated, Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from roles import RoleEnum
+
 # Mirrors ``cee.paths._RUN_ID_PATTERN`` (bible 04 §5.1). Kept inline so the
 # schema package does not take a runtime dependency on ``cee.paths``.
 _RUN_ID_PATTERN = r"^\d{8}_\d{6}_[0-9a-f]{8}$"
@@ -97,5 +99,4 @@ class ClarificationRequest(BaseModel):
     paused_at_step: Annotated[int, Field(ge=1, le=10)]
     intent_object_so_far: dict[str, Any]
     paused_at_iso_timestamp: Annotated[str, Field(min_length=1)]
-    # TODO task 9: replace with RoleEnum once roles/__init__.py defines it.
-    produced_by: str = "INTERPRETER"
+    produced_by: RoleEnum = RoleEnum.INTERPRETER

@@ -23,6 +23,8 @@ from typing import Annotated, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from roles import RoleEnum
+
 
 class StepSpec(BaseModel):
     """One step of the execution strategy.
@@ -69,8 +71,7 @@ class ExecutionStrategy(BaseModel):
     checkpoints: list[int] = Field(default_factory=list)
     stop_conditions: list[str] = Field(default_factory=list)
     estimated_cost_tokens: Annotated[int, Field(ge=0)]
-    # TODO task 9: replace with RoleEnum once roles/__init__.py defines it.
-    produced_by: str = "STRATEGY_BUILDER"
+    produced_by: RoleEnum = RoleEnum.STRATEGY_BUILDER
 
     @model_validator(mode="after")
     def _check_step_indices_sequential(self) -> "ExecutionStrategy":

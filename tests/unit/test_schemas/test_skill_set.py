@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from roles import RoleEnum
 from schemas import SkillRef, SkillSet
 
 
@@ -61,7 +62,7 @@ def test_skill_set_full_valid() -> None:
                 )
             ),
         ],
-        produced_by="SKILL_ENGINE",
+        produced_by=RoleEnum.SKILL_ENGINE,
     )
     assert len(obj.skills) == 2
     assert len(obj.newly_generated) == 1
@@ -72,9 +73,12 @@ def test_skill_set_extra_field_rejected() -> None:
         SkillSet(skills=[], unknown_field="x")
 
 
-def test_skill_set_string_whitespace_stripped() -> None:
-    obj = SkillSet(skills=[], produced_by="  SKILL_ENGINE  ")
-    assert obj.produced_by == "SKILL_ENGINE"
+def test_skill_set_produced_by_rejects_whitespace_padded_string() -> None:
+    """produced_by is a RoleEnum (bible 02 §4); enum validation runs before
+    str_strip_whitespace, so padded values are rejected outright rather than
+    silently coerced. Documents the stricter contract introduced by task 9."""
+    with pytest.raises(ValidationError):
+        SkillSet(skills=[], produced_by="  SKILL_ENGINE  ")
 
 
 def test_skill_set_schema_version_present() -> None:

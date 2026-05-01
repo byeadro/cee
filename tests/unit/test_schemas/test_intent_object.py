@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from roles import RoleEnum
 from schemas import IntentObject
 
 
@@ -40,7 +41,7 @@ def test_intent_object_full_valid() -> None:
         ambiguity_score=0.42,
         domain="code",
         raw_signals=["urgency: high"],
-        produced_by="INTERPRETER",
+        produced_by=RoleEnum.INTERPRETER,
     )
     assert obj.constraints == ["Python 3.11+", "no external API calls"]
     assert obj.implicit_assumptions == ["assumed JWT format"]

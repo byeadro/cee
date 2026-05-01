@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from roles import RoleEnum
 from schemas import RunErrorArtifact
 
 
@@ -75,7 +76,7 @@ def test_run_error_full_valid() -> None:
         },
         recovery_suggestion="Investigate INTERPRETER and replay.",
         failed_at_iso_timestamp="2026-04-30T14:05:00Z",
-        produced_by="PIPELINE_DRIVER",
+        produced_by=RoleEnum.PIPELINE_DRIVER,
     )
     assert obj.error_type == "schema_violation"
     assert obj.error_payload["module"] == "INTERPRETER"

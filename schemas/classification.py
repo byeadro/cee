@@ -24,6 +24,8 @@ from typing import Annotated, Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from roles import RoleEnum
+
 TaskType = Literal[
     "BUILD",
     "ANALYZE",
@@ -186,8 +188,7 @@ class Classification(BaseModel):
     complexity_components: ComplexityComponents
     flags: ClassificationFlags
     audit: ClassificationAudit
-    # TODO task 9: replace with RoleEnum once roles/__init__.py defines it.
-    produced_by: str = "CLASSIFIER"
+    produced_by: RoleEnum = RoleEnum.CLASSIFIER
 
     @model_validator(mode="after")
     def _check_score_equals_components_sum(self) -> "Classification":

@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from roles import RoleEnum
 from schemas import ClarificationQuestion, ClarificationRequest
 
 
@@ -77,7 +78,7 @@ def test_clarification_request_full_valid() -> None:
         paused_at_step=3,
         intent_object_so_far={"goal": "refactor auth", "_partial": True},
         paused_at_iso_timestamp="2026-04-30T14:00:00Z",
-        produced_by="INTERPRETER",
+        produced_by=RoleEnum.INTERPRETER,
     )
     assert len(obj.questions) == 2
     assert obj.paused_at_step == 3

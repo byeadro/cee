@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from roles import RoleEnum
 from schemas import (
     AgentEntry,
     Agents,
@@ -123,7 +124,7 @@ def test_final_prompt_full_valid() -> None:
         safety_banner="[CONFIRM BEFORE EXECUTION]",
         run_metadata=_valid_run_metadata(),
         chunking=Chunking(n=1, of=3, chunking_instructions="Wait for all 3."),
-        produced_by="PROMPT_BUILDER",
+        produced_by=RoleEnum.PROMPT_BUILDER,
     )
     assert obj.agents is not None
     assert obj.skills is not None

@@ -24,6 +24,8 @@ from typing import Annotated, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from roles import RoleEnum
+
 # Mirrors ``cee.paths._RUN_ID_PATTERN`` (bible 04 §5.1).
 _RUN_ID_PATTERN = r"^\d{8}_\d{6}_[0-9a-f]{8}$"
 
@@ -87,8 +89,7 @@ class RunSummary(BaseModel):
     artifact_paths: dict[str, str] = Field(default_factory=dict)
     prompt_chunks: Annotated[int, Field(ge=0)]
     halt_or_error_ref: str | None = None
-    # TODO task 9: replace with RoleEnum once roles/__init__.py defines it.
-    produced_by: str = "PIPELINE_DRIVER"
+    produced_by: RoleEnum = RoleEnum.PIPELINE_DRIVER
 
     @model_validator(mode="after")
     def _check_terminal_state_invariants(self) -> "RunSummary":

@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from roles import RoleEnum
 from schemas import Attachment, RawInput
 
 
@@ -54,7 +55,7 @@ def test_raw_input_full_valid() -> None:
         target_executor="claude_ai",
         timestamp="2026-04-30T14:00:00Z",
         source="api",
-        produced_by="OPERATOR",
+        produced_by=RoleEnum.OPERATOR,
     )
     assert len(obj.attachments) == 1
     assert obj.target_executor == "claude_ai"

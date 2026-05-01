@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from roles import RoleEnum
 from schemas import (
     CandidateScore,
     Classification,
@@ -107,7 +108,7 @@ def test_classification_full_valid() -> None:
                 needs_grounding=["RESEARCH-like phrasing in goal"],
             ),
         ),
-        produced_by="CLASSIFIER",
+        produced_by=RoleEnum.CLASSIFIER,
     )
     assert obj.flags.needs_grounding is True
     assert len(obj.task_type_candidates) == 2
@@ -141,11 +142,14 @@ def test_classification_extra_field_rejected() -> None:
         Classification(**kwargs)
 
 
-def test_classification_string_whitespace_stripped() -> None:
+def test_classification_produced_by_rejects_whitespace_padded_string() -> None:
+    """produced_by is a RoleEnum (bible 02 §4); enum validation runs before
+    str_strip_whitespace, so padded values are rejected outright rather than
+    silently coerced. Documents the stricter contract introduced by task 9."""
     kwargs = _valid_kwargs()
     kwargs["produced_by"] = "  CLASSIFIER  "
-    obj = Classification(**kwargs)
-    assert obj.produced_by == "CLASSIFIER"
+    with pytest.raises(ValidationError):
+        Classification(**kwargs)
 
 
 def test_classification_schema_version_present() -> None:
