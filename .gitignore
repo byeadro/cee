@@ -37,3 +37,7 @@ promotion_queue.json
 # OS
 .DS_Store
 Thumbs.db
+# Python packaging
+*.egg-info/
+build/
+dist/

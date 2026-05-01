@@ -1,0 +1,116 @@
+"""Tests for ``cli/main.py`` — the argparse dispatcher.
+
+The dispatcher's only job is to (a) wire subcommand functions, (b) parse
+argv, (c) call the chosen function, and (d) translate exceptions into
+exit codes. These tests cover that contract directly without touching
+the ``cmd_init`` body — that lives in ``test_init_command.py``.
+"""
+
+from __future__ import annotations
+
+import re
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from cli import main as main_module
+from cli.main import main
+from errors import BootError
+
+
+def test_main_with_no_args_exits_nonzero(capsys: pytest.CaptureFixture[str]) -> None:
+    """``cee`` with no subcommand → argparse SystemExit, non-zero code.
+
+    argparse raises ``SystemExit(2)`` for missing-required-arg before our
+    try/except can run. That's standard CLI behaviour and what
+    ``required=True`` on the subparser produces.
+    """
+    with pytest.raises(SystemExit) as exc_info:
+        main([])
+    assert exc_info.value.code != 0
+
+
+def test_main_with_unknown_subcommand_exits_nonzero() -> None:
+    """An unregistered subcommand → argparse SystemExit, non-zero code."""
+    with pytest.raises(SystemExit) as exc_info:
+        main(["does-not-exist"])
+    assert exc_info.value.code != 0
+
+
+def test_main_with_init_invokes_cmd_init() -> None:
+    """``cee init`` calls cmd_init with the parsed args namespace."""
+    fake_cmd = MagicMock(return_value=0)
+    with patch.object(main_module, "cmd_init", fake_cmd):
+        # Re-run main; the dispatcher reads cmd_init from main_module at
+        # main() call time when it builds the parser, so the patch needs
+        # to be on main_module's namespace.
+        rc = main(["init"])
+    assert rc == 0
+    fake_cmd.assert_called_once()
+    # The single positional arg is the parsed argparse Namespace.
+    call_args = fake_cmd.call_args
+    assert call_args.args[0].command == "init"
+
+
+def test_main_returns_zero_on_success() -> None:
+    """When the subcommand returns 0, main returns 0."""
+    fake_cmd = MagicMock(return_value=0)
+    with patch.object(main_module, "cmd_init", fake_cmd):
+        rc = main(["init"])
+    assert rc == 0
+
+
+def test_main_returns_subcommand_nonzero_exit_code() -> None:
+    """A subcommand returning a non-zero int is propagated."""
+    fake_cmd = MagicMock(return_value=42)
+    with patch.object(main_module, "cmd_init", fake_cmd):
+        rc = main(["init"])
+    assert rc == 42
+
+
+def test_main_catches_boot_error_returns_one(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """BootError → return 1, stderr formatted as ``BOOT FAILURE [step]: reason``."""
+    fake_cmd = MagicMock(side_effect=BootError("B1", "config missing"))
+    with patch.object(main_module, "cmd_init", fake_cmd):
+        rc = main(["init"])
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "BOOT FAILURE [B1]: config missing" in captured.err
+
+
+def test_main_boot_error_stderr_includes_step_and_reason(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The stderr line carries both the boot step and the reason."""
+    fake_cmd = MagicMock(side_effect=BootError("B7", "schema mismatch"))
+    with patch.object(main_module, "cmd_init", fake_cmd):
+        main(["init"])
+    captured = capsys.readouterr()
+    assert "B7" in captured.err
+    assert "schema mismatch" in captured.err
+
+
+def test_main_catches_unexpected_error_returns_two(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Any non-BootError exception → return 2, stderr formatted."""
+    fake_cmd = MagicMock(side_effect=ValueError("kaboom"))
+    with patch.object(main_module, "cmd_init", fake_cmd):
+        rc = main(["init"])
+    assert rc == 2
+    captured = capsys.readouterr()
+    assert "UNEXPECTED ERROR: ValueError: kaboom" in captured.err
+
+
+def test_main_unexpected_error_stderr_includes_exception_type(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fake_cmd = MagicMock(side_effect=RuntimeError("oops"))
+    with patch.object(main_module, "cmd_init", fake_cmd):
+        main(["init"])
+    captured = capsys.readouterr()
+    # Type name is included so the OPERATOR can grep for it in shell history.
+    assert re.search(r"UNEXPECTED ERROR: RuntimeError: oops", captured.err)

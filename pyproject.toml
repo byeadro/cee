@@ -1,3 +1,45 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cee"
+version = "0.1.0"
+description = "Claude Execution Engine"
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.0",
+]
+
+[project.scripts]
+cee = "cli.main:main"
+
+[tool.setuptools]
+py-modules = ["paths"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = [
+    "agent_selector*",
+    "boot*",
+    "classifier*",
+    "cli*",
+    "config_loader*",
+    "errors*",
+    "executor*",
+    "grounding*",
+    "interpreter*",
+    "output_format*",
+    "persistence*",
+    "prompt_builder*",
+    "roles*",
+    "safety_gate*",
+    "schemas*",
+    "skill_engine*",
+    "strategy_builder*",
+]
+exclude = ["tests*"]
+
 [tool.pytest.ini_options]
 filterwarnings = [
     "ignore::DeprecationWarning:pytest_asyncio",
