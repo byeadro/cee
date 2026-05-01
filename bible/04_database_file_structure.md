@@ -121,7 +121,7 @@ Files in `~/cee/bible/` are written by `cee sync-bible` and otherwise treated as
 │   └── skill_frontmatter.json
 │
 ├── bible/                         # mirror of Notion bible pages 00–22
-│   ├── .sync_meta.json            # last sync timestamp per page
+│   ├── .sync_meta.json            # per-page sync metadata; schema in §5.5
 │   ├── 00_project_vision.md
 │   ├── 01_real_problem_breakdown.md
 │   ├── 02_user_roles.md
@@ -273,6 +273,28 @@ Each promotion candidate page contains:
 - Provenance: which Run created it, the input that triggered generation
 - Approve / Reject buttons (manual; `OPERATOR` moves the page)
 CEE detects page moves between Pending/Approved/Rejected on next sync and updates `promotion_queue.json` accordingly.
+### 5.5 Bible sync metadata (`.sync_meta.json`)
+Per-page sync state for the bible mirror at `~/cee/bible/.sync_meta.json`. Read by `BOOT_SEQUENCER` at boot step B2 (per bible 00 §12) to detect drift between Notion canon and the local mirror.
+```json
+{
+  "schema_version": "1.0.0",
+  "produced_by": "BOOT_SEQUENCER",
+  "last_synced": "2026-05-01T14:15:22Z",
+  "pages": {
+    "00_project_vision": {
+      "notion_page_id": "<UUID of the Notion page>",
+      "notion_last_edited_time": "2026-05-01T13:42:09Z",
+      "local_path": "~/cee/bible/00_project_vision.md",
+      "content_sha256": "<sha256 hex of local file at last sync>"
+    },
+    "...": "one entry per bible section, keyed by <NN>_<slug> matching the .md filename"
+  }
+}
+```
+Two drift checks are enabled by this file:
+- **Notion-side drift:** `pages[X].notion_last_edited_time` is compared against the live Notion `last_edited_time` for that page. Mismatch triggers `cee sync-bible` if `auto_sync = true` (per §5.2), else halts (per bible 00 §12 B2).
+- **Mirror-side drift:** `pages[X].content_sha256` is compared against the sha256 of the local mirror file. Mismatch indicates a manual edit to the mirror and triggers a drift warning per §4 Rule 7.
+Written exclusively by `BOOT_SEQUENCER` via `cee sync-bible` (per bible 02 §7.13); bypasses `PERSISTENCE_WRITER`. The Pydantic model lives at `~/cee/schemas/sync_meta.py` per §6.1.
 ---
 ## 6. Data / Inputs Needed
 ### 6.1 Schemas (`~/cee/schemas/`)
@@ -330,8 +352,12 @@ Every artifact has a JSON Schema file. Pydantic models are generated from these.
 <td>`agent_frontmatter.json`</td>
 <td>YAML frontmatter for agent files</td>
 </tr>
+<tr>
+<td>`sync_meta.json`</td>
+<td>`SyncMeta`</td>
+</tr>
 </table>
-Each schema is versioned (`$schema_version: "1.0.0"`). Schema changes require a migration script under `~/cee/schemas/migrations/`.
+Each schema is versioned (`$schema_version: "1.0.0"`). Schema changes require a migration script under `~/cee/schemas/migrations/`. Net-new schemas introduced at version 1.0.0 do not require a migration script; the `migrations/` directory exists for version bumps on existing schemas (e.g., 1.0.0 → 1.1.0).
 ### 6.2 Skill file format
 Skills are native Claude Code [SKILL.md](http://SKILL.md) files. The frontmatter schema (defined in section 07) requires at minimum:
 ```yaml
@@ -489,7 +515,7 @@ No automatic cleanup. `cee archive-runs --older-than 90d` moves old Runs to `~/c
 - **Test fixtures:** `~/cee/tests/fixtures/` contains miniature versions of the layout for unit tests. Tests do not write to the real `~/cee/`.
 - **Layout invariants:** a test in `~/cee/tests/unit/test_layout.py` walks `~/cee/` after a fresh boot and asserts every required directory exists and has expected permissions.
 - **No global writes:** modules import path constants; they do not call `os.makedirs` outside `paths.py`.
-- **Schema migrations:** every schema change requires a migration script. The schema version is in the file's `$schema_version` field; migrations chain `v1 → v2 → v3`.
+- **Schema migrations:** every schema version bump requires a migration script. The schema version is in the file's `$schema_version` field; migrations chain `v1 → v2 → v3`.
 - **Obsidian writer is idempotent:** running it twice produces the same output. Implementation hashes the rendered note and skips the write if the hash matches.
 - **Notion writer respects rate limits:** built-in retry with exponential backoff. On persistent failure, queue retains the entry.
 ---
