@@ -237,10 +237,33 @@ def test_paused_state_allows_zero_prompt_chunks() -> None:
 
 
 def test_state_must_be_valid_enum_value() -> None:
-    with pytest.raises(ValidationError):
-        RunSummary(**_delivered_kwargs(state="aborted"))
+    # Per bible 13 §5.2 line 107 the canonical closed enum is
+    # {delivered, paused, failed, aborted}. Anything outside this set
+    # must be rejected.
     with pytest.raises(ValidationError):
         RunSummary(**_delivered_kwargs(state="halted"))
+    with pytest.raises(ValidationError):
+        RunSummary(**_delivered_kwargs(state="cancelled"))
+
+
+def test_aborted_state_accepted_when_halt_or_error_ref_provided() -> None:
+    """Bible 13 §5.2 line 107 declares ``aborted`` as a valid run state.
+
+    Aborted runs share the non-delivered invariant: they must reference
+    an artifact (the abort marker) at ``halt_or_error_ref``.
+    """
+    obj = RunSummary(
+        **_paused_kwargs(
+            state="aborted",
+            halt_or_error_ref="runs/20260501_120000_abcdef01/abort.json",
+        )
+    )
+    assert obj.state == "aborted"
+
+
+def test_aborted_state_rejected_without_halt_or_error_ref() -> None:
+    with pytest.raises(ValidationError):
+        RunSummary(**_paused_kwargs(state="aborted", halt_or_error_ref=None))
 
 
 def test_task_type_optional() -> None:

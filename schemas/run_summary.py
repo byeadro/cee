@@ -10,12 +10,17 @@ artifacts"; ``artifact_paths`` is that mapping. The slug lists let
 downstream consumers (Obsidian writer, promotion queue) operate from
 ``summary.json`` alone without re-reading every step artifact.
 
-The ``state`` field captures the high-level Run state machine — runtime
-shorthand used in bible 03 §5.3 ("the Run is in state ``paused``") and
+The ``state`` field captures the high-level Run state machine. The
+canonical closed enum is declared in bible 13 §5.2 line 107
+(``state: delivered | paused | failed | aborted``) — the only place
+the four-value set is enumerated explicitly. Runtime shorthand also
+surfaces in bible 03 §5.3 ("the Run is in state ``paused``") and
 bible 19 §5.7 (``RunResult(state="paused")`` / ``RunResult(state="failed")``).
-Bible 03 §3 enumerates three terminal states (``delivered``,
+Bible 03 §3 enumerates three terminal *halt* states (``delivered``,
 ``halted_for_clarification``, ``halted_for_error``); ``paused`` and
-``failed`` are the runtime labels of the latter two.
+``failed`` are the runtime labels of the latter two; ``aborted``
+covers operator-initiated termination (bible 13 §5.2 groups
+``aborted`` with ``failed`` for operator queries — line 341).
 """
 
 from __future__ import annotations
@@ -30,7 +35,7 @@ from roles import RoleEnum
 _RUN_ID_PATTERN = r"^\d{8}_\d{6}_[0-9a-f]{8}$"
 
 
-RunState = Literal["delivered", "paused", "failed"]
+RunState = Literal["delivered", "paused", "failed", "aborted"]
 
 TaskTypeLiteral = Literal[
     "BUILD",
@@ -59,8 +64,8 @@ class RunSummary(BaseModel):
 
     * ``delivered`` Runs must point to no halt or error artifact and
       must have produced at least one prompt chunk.
-    * ``paused`` and ``failed`` Runs must point to their halt or error
-      artifact respectively (a non-empty path).
+    * ``paused``, ``failed``, and ``aborted`` Runs must point to their
+      halt, error, or abort artifact respectively (a non-empty path).
 
     For Runs that halt before classification (e.g. INPUT_EMPTY_ERROR),
     ``task_type`` and ``complexity_tier`` are ``None`` and the slug
@@ -105,7 +110,7 @@ class RunSummary(BaseModel):
                     f"got {self.prompt_chunks}"
                 )
         else:
-            # state in ("paused", "failed")
+            # state in ("paused", "failed", "aborted")
             if not self.halt_or_error_ref:
                 raise ValueError(
                     f"state={self.state!r} requires halt_or_error_ref to "

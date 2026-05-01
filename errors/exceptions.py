@@ -15,7 +15,12 @@ halt_type; we do not validate shape here (per-halt schemas come later).
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from errors.types import HaltType, RunErrorType
+
+if TYPE_CHECKING:
+    from boot.consistency import DriftRecord
 
 
 class CEEException(Exception):
@@ -69,6 +74,21 @@ class BootError(CEEException):
         self.step = step
         self.reason = reason
         super().__init__(f"Boot failed at {step}: {reason}")
+
+
+class BootConsistencyError(BootError):
+    """Boot step B3 failed: closed-enum drift detected across bible+code.
+
+    Carries the structured drift report from ``boot.consistency.check()``.
+    The caller (``boot.sequencer``) raises this when ``ConsistencyReport.ok``
+    is False so the driver can refuse to accept new Runs until the bible
+    and code are reconciled (bible 00 §12 step B3, bible 20 §5.2).
+    """
+
+    def __init__(self, drifts: list["DriftRecord"]) -> None:
+        self.drifts = drifts
+        summary = f"{len(drifts)} drift(s) detected across closed enums"
+        super().__init__(step="B3", reason=summary)
 
 
 class ValidationError(CEEException):

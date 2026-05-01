@@ -5,6 +5,7 @@ the exception class hierarchy from §5.7.
 """
 
 from errors.exceptions import (
+    BootConsistencyError,
     BootError,
     CEEException,
     InjectionDetected,
@@ -28,6 +29,7 @@ __all__ = [
     "PipelineHalt",
     "RunError",
     "BootError",
+    "BootConsistencyError",
     "ValidationError",
     "RoleAuthorityError",
     "SubstrateBoundaryError",

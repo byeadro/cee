@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from errors import (
+    BootConsistencyError,
     BootError,
     CEEException,
     HaltType,
@@ -293,3 +294,63 @@ def test_exception_classes_match_bible() -> None:
 
     # Defensive: implementation set also matches the literal expectation.
     assert impl_classes == EXPECTED_EXCEPTION_CLASS_NAMES
+
+
+# --------------------------------------------------------------------------- #
+# BootConsistencyError (Phase 2 task 5 — boot/consistency.py)                 #
+# --------------------------------------------------------------------------- #
+#
+# BootConsistencyError extends BootError; it is NOT a canonical bible §5.7
+# class. The bible-grounding test above intentionally excludes it. These
+# tests cover the structural contract the boot sequencer relies on:
+# step="B3", drifts payload preserved, catchable through the BootError /
+# CEEException hierarchy.
+
+
+def test_boot_consistency_error_inherits_from_boot_error() -> None:
+    assert issubclass(BootConsistencyError, BootError)
+    assert issubclass(BootConsistencyError, CEEException)
+    assert issubclass(BootConsistencyError, Exception)
+
+
+def test_boot_consistency_error_payload_preserved() -> None:
+    drifts = [
+        {"enum_name": "RunState", "drift_kind": "bible_canonical"},
+        {"enum_name": "TaskType", "drift_kind": "internal_schema"},
+    ]
+    exc = BootConsistencyError(drifts=drifts)
+    assert exc.drifts is drifts
+    assert len(exc.drifts) == 2
+
+
+def test_boot_consistency_error_step_is_B3() -> None:
+    exc = BootConsistencyError(drifts=[])
+    assert exc.step == "B3"
+
+
+def test_boot_consistency_error_str_includes_count() -> None:
+    exc = BootConsistencyError(drifts=[{"x": 1}, {"x": 2}, {"x": 3}])
+    rendered = str(exc)
+    assert "B3" in rendered
+    assert "3" in rendered
+    assert "drift" in rendered.lower()
+
+
+def test_boot_consistency_error_caught_by_CEEException() -> None:
+    try:
+        raise BootConsistencyError(drifts=[])
+    except CEEException as exc:
+        assert isinstance(exc, BootConsistencyError)
+    else:
+        pytest.fail("CEEException did not catch BootConsistencyError")
+
+
+def test_boot_consistency_error_caught_by_BootError() -> None:
+    try:
+        raise BootConsistencyError(drifts=[{"enum_name": "Foo"}])
+    except BootError as exc:
+        assert isinstance(exc, BootConsistencyError)
+        assert exc.step == "B3"
+        assert exc.drifts == [{"enum_name": "Foo"}]
+    else:
+        pytest.fail("BootError did not catch BootConsistencyError")
