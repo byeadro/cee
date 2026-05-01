@@ -87,9 +87,9 @@ A write without a named role is rejected at the writer module. There is no "syst
 This walks the Run pipeline (section 00 §5) annotating each step with the acting roles.
 ### Step 0 — Boot
 - Acting role: `BOOT_SEQUENCER`
-- Reads from: `FILESYSTEM_CANON` (bible mirror, registries, schemas), `NOTION_BIBLE` (only if `auto_sync` and drift detected)
-- Writes to: `FILESYSTEM_CANON` (registry rebuilds), `OBSIDIAN_VAULT` (boot log)
-- Authority: read-only on bible content; full write on registries
+- Reads from: `FILESYSTEM_CANON` (bible mirror, registries, schemas, `.sync_meta.json`), `NOTION_BIBLE` (only if `auto_sync` and drift detected)
+- Writes to: `FILESYSTEM_CANON` (registry rebuilds, boot log, bible mirror writes via `cee sync-bible`, `.sync_meta.json`)
+- Authority: full write on registries; full write on bible mirror and `.sync_meta.json` when sourcing from `NOTION_BIBLE` via `cee sync-bible` (Notion-to-filesystem sync only — bible content authority remains with `OPERATOR` editing in Notion per Rule 6)
 ### Step 1 — Capture
 - Acting role: `OPERATOR` (the input source)
 - Reads from: nothing
@@ -192,9 +192,9 @@ This is the surface declaration. Every role's allowed reads and writes are liste
 - **Writes:** in-memory bible state
 - **Audit:** which sections loaded, hash of each
 ### 7.13 BOOT_SEQUENCER
-- **Reads:** environment, `~/cee/`, all registries
-- **Writes:** rebuilt registries, boot log
-- **Audit:** every boot step's pass/fail logged
+- **Reads:** environment, `~/cee/`, all registries; `~/cee/bible/.sync_meta.json` (drift check); `NOTION_BIBLE` via Notion MCP (only when `auto_sync = true` and drift detected, per §00 §12 B2)
+- **Writes:** rebuilt registries, boot log, `~/cee/bible/*.md` (bible mirror, written by `cee sync-bible` from `~/cee/boot/bible_sync.py`), `~/cee/bible/.sync_meta.json`
+- **Audit:** every boot step's pass/fail logged; per-page sync events logged (page id, fetched `updated_at`, write outcome); drift detection outcome and sync trigger logged
 ### 7.13a PIPELINE_DRIVER
 - **Reads:** all Run artifacts as they are produced; `bible_snapshot/` for the current Run; `~/cee/runs/<run_id>/.lock` (its own lock file)
 - **Writes:** `~/cee/runs/<run_id>/run_summary.json` (Run lifecycle summary at success, halt, or failure); `~/cee/runs/<run_id>/halt.json` (when a `PipelineHalt` exception is caught); `~/cee/runs/<run_id>/run_error.json` (when a `RunError` exception is caught); the Run's `pipeline.log` JSONL; the `.lock` file
@@ -222,7 +222,7 @@ Each system role produces exactly one artifact type. This is enforced by the sch
 | `OBSIDIAN_WRITER` | vault state changes |
 | `NOTION_WRITER` | Notion state changes |
 | `BIBLE_LOADER` | in-memory bible state |
-| `BOOT_SEQUENCER` | boot log + rebuilt registries |
+| `BOOT_SEQUENCER` | boot log + rebuilt registries + bible mirror (`~/cee/bible/*.md`) + `.sync_meta.json` |
 | `PIPELINE_DRIVER` | `RunSummary`, halt artifact (`HaltArtifact`), `RunError` (artifact form) |
 
 A role that produces something not in this table is a bug.
@@ -264,8 +264,8 @@ Module-level enforcement raises `RoleSurfaceViolation`. Run halts. Logged with r
 **Recovery:** code review; tests in section 18 assert that artifacts can only be produced via the wrapper.
 ### 11.2 Authority escalation
 **Failure:** a system role attempts a canon-modifying action (e.g., `CLASSIFIER` tries to edit the bible).
-**Detection:** writer modules for canon (`NOTION_WRITER` to bible, `PERSISTENCE_WRITER` to bible mirror) reject any caller that isn't `OPERATOR`.
-**Recovery:** `RoleAuthorityError`; Run halts.
+**Detection:** each writer enforces its own `allowed_writes` surface and rejects out-of-surface calls. `NOTION_WRITER` writes to Notion only on behalf of `OPERATOR`. `BOOT_SEQUENCER` writes the bible mirror (`~/cee/bible/*.md`) and `.sync_meta.json` directly, bypassing `PERSISTENCE_WRITER` for those paths — but only as mechanical Notion-to-filesystem sync via `cee sync-bible` (precedent: `PIPELINE_DRIVER` §7.13a, which similarly bypasses `PERSISTENCE_WRITER` for Run-lifecycle artifacts). `PERSISTENCE_WRITER`'s `allowed_writes` surface excludes `~/cee/bible/`, so any role attempting a bible-mirror write through it is rejected. `OPERATOR` modifies the bible mirror only by editing Notion, not by writing to `~/cee/bible/` directly.
+**Recovery:** `RoleAuthorityError` (cross-role canon attempts) or `RoleSurfaceViolation` (out-of-surface writes); Run halts.
 ### 11.3 Substrate cross-contamination
 **Failure:** `OBSIDIAN_WRITER` accidentally writes to filesystem canon, or vice versa.
 **Detection:** each writer module is path-restricted at the OS level and validated by tests.
