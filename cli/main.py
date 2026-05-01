@@ -70,6 +70,13 @@ def main(argv: list[str] | None = None) -> int:
         help="Verify directory layout (existence checks against bible "
         "04 §5.1, §5.2, §5.3 + 12 §5.8)",
     )
+    verify_parser.add_argument(
+        "--schemas",
+        action="store_true",
+        help="Verify the 14 artifact schemas import, validate, and "
+        "produce JSON-serializable model_json_schema() output "
+        "(bible 04 §6.1 + 10 §6.3 + 11 §6.2)",
+    )
     verify_parser.set_defaults(func=cmd_verify)
 
     args = parser.parse_args(argv)

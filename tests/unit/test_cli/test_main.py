@@ -147,3 +147,47 @@ def test_main_verify_help_includes_layout_option(
         main(["verify", "--help"])
     out = capsys.readouterr().out
     assert "--layout" in out
+
+
+def test_main_with_verify_schemas_invokes_cmd_verify() -> None:
+    """``cee verify --schemas`` dispatches with schemas=True, layout=False."""
+    fake_cmd = MagicMock(return_value=0)
+    with patch.object(main_module, "cmd_verify", fake_cmd):
+        rc = main(["verify", "--schemas"])
+    assert rc == 0
+    fake_cmd.assert_called_once()
+    ns = fake_cmd.call_args.args[0]
+    assert ns.command == "verify"
+    assert ns.schemas is True
+    assert ns.layout is False
+
+
+def test_main_with_verify_both_flags_invokes_cmd_verify_with_both_true() -> None:
+    """``cee verify --layout --schemas`` → both flags True on the namespace."""
+    fake_cmd = MagicMock(return_value=0)
+    with patch.object(main_module, "cmd_verify", fake_cmd):
+        rc = main(["verify", "--layout", "--schemas"])
+    assert rc == 0
+    ns = fake_cmd.call_args.args[0]
+    assert ns.layout is True
+    assert ns.schemas is True
+
+
+def test_main_with_verify_layout_only_has_schemas_false() -> None:
+    """``cee verify --layout`` (no --schemas) defaults schemas to False."""
+    fake_cmd = MagicMock(return_value=0)
+    with patch.object(main_module, "cmd_verify", fake_cmd):
+        main(["verify", "--layout"])
+    ns = fake_cmd.call_args.args[0]
+    assert ns.layout is True
+    assert ns.schemas is False
+
+
+def test_main_verify_help_includes_schemas_option(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``cee verify --help`` mentions the --schemas flag."""
+    with pytest.raises(SystemExit):
+        main(["verify", "--help"])
+    out = capsys.readouterr().out
+    assert "--schemas" in out
