@@ -84,6 +84,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Run the canonical boot sequence (B1-B9 per bible 00 §12) "
         "and report per-step results + halt detail (bible 20 §5.2)",
     )
+    verify_parser.add_argument(
+        "--bible",
+        action="store_true",
+        help="Verify bible consistency (B3) + bible drift vs Notion "
+        "(bible 04 §5.5 + §5.6, bible 20 §5.2)",
+    )
     verify_parser.set_defaults(func=cmd_verify)
 
     sync_bible_parser = subparsers.add_parser(

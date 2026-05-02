@@ -217,3 +217,30 @@ def test_main_verify_help_includes_boot_option(
     out = capsys.readouterr().out
     assert "--boot" in out
     assert "B1-B9" in out or "boot sequence" in out.lower()
+
+
+# ─── Phase 2 task 10: --bible flag registration ────────────────────────
+
+
+def test_main_verify_bible_flag_is_registered() -> None:
+    """``cee verify --bible`` parses without an argparse error."""
+    fake_cmd = MagicMock(return_value=0)
+    with patch.object(main_module, "cmd_verify", fake_cmd):
+        rc = main(["verify", "--bible"])
+    assert rc == 0
+    ns = fake_cmd.call_args.args[0]
+    assert ns.bible is True
+    assert ns.boot is False
+    assert ns.layout is False
+    assert ns.schemas is False
+
+
+def test_main_verify_help_includes_bible_option(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``cee verify --help`` mentions the --bible flag and bible-04 grounding."""
+    with pytest.raises(SystemExit):
+        main(["verify", "--help"])
+    out = capsys.readouterr().out
+    assert "--bible" in out
+    assert "drift" in out.lower() or "consistency" in out.lower()

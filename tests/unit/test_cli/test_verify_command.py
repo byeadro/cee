@@ -107,11 +107,18 @@ def cee_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]
 
 
 def _ns(
-    layout: bool = True, schemas: bool = False, boot: bool = False,
+    layout: bool = True,
+    schemas: bool = False,
+    boot: bool = False,
+    bible: bool = False,
 ) -> argparse.Namespace:
     """Argparse Namespace stand-in matching the verify subparser shape."""
     return argparse.Namespace(
-        layout=layout, schemas=schemas, boot=boot, command="verify"
+        layout=layout,
+        schemas=schemas,
+        boot=boot,
+        bible=bible,
+        command="verify",
     )
 
 
@@ -353,14 +360,15 @@ def test_cmd_verify_without_any_flag_returns_two(
     cee_root: dict[str, Path], capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Bare ``cee verify`` (no mode) → exit 2 + usage hint on stderr."""
-    rc = cmd_verify(_ns(layout=False, schemas=False, boot=False))
+    rc = cmd_verify(_ns(layout=False, schemas=False, boot=False, bible=False))
     captured = capsys.readouterr()
     assert rc == 2
     assert "Specify a verify mode" in captured.err
-    # The hint must mention all three currently-shipping modes.
+    # The hint must mention all four currently-shipping modes.
     assert "--layout" in captured.err
     assert "--schemas" in captured.err
     assert "--boot" in captured.err
+    assert "--bible" in captured.err
     # Nothing written to stdout (the report belongs to a real mode).
     assert captured.out == ""
 
@@ -1097,4 +1105,315 @@ def test_cmd_verify_with_boot_and_layout_runs_both_max_exit_code(
         rc = cmd_verify(_ns(layout=True, schemas=False, boot=True))
     layout_spy.assert_called_once()
     boot_spy.assert_called_once()
+    assert rc == 1  # max(0, 1)
+
+
+# ─── _verify_bible (Phase 2 task 10) ───────────────────────────────────
+#
+# Tests mock the two ``_run_*_check`` seams in ``verify_module`` and
+# supply canned ConsistencyReport / DriftReport instances (or have the
+# drift seam raise BootBibleSyncError). This isolates the renderer +
+# exit-code logic from the full T5 / T6 backend machinery (each of
+# which has its own unit suite).
+
+
+from boot.bible_sync import DriftReport  # noqa: E402
+from boot.consistency import ConsistencyReport, DriftRecord  # noqa: E402
+from cli.commands.verify import (  # noqa: E402
+    _BIBLE_DRIFT_HINTS,
+    _run_consistency_check,
+    _run_drift_check,
+    _verify_bible,
+)
+
+
+def _ok_consistency(enums: int = 13) -> ConsistencyReport:
+    return ConsistencyReport(ok=True, enums_checked=enums, drifts=())
+
+
+def _drift_consistency(*drifts: DriftRecord) -> ConsistencyReport:
+    return ConsistencyReport(
+        ok=False, enums_checked=13, drifts=tuple(drifts)
+    )
+
+
+def _empty_drift_report(in_sync_count: int = 24) -> DriftReport:
+    return DriftReport(
+        in_sync=tuple(f"{i:02d}_p" for i in range(in_sync_count)),
+        notion_newer=(),
+        mirror_modified=(),
+        orphan=(),
+        missing_from_meta=(),
+    )
+
+
+def test_verify_bible_returns_zero_when_both_checks_pass() -> None:
+    """Both subsections clean → exit 0."""
+    with (
+        patch.object(
+            verify_module, "_run_consistency_check",
+            return_value=_ok_consistency(),
+        ),
+        patch.object(
+            verify_module, "_run_drift_check",
+            return_value=_empty_drift_report(),
+        ),
+    ):
+        rc = _verify_bible()
+    assert rc == 0
+
+
+def test_verify_bible_stdout_shows_both_sections_on_happy_path(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with (
+        patch.object(
+            verify_module, "_run_consistency_check",
+            return_value=_ok_consistency(),
+        ),
+        patch.object(
+            verify_module, "_run_drift_check",
+            return_value=_empty_drift_report(),
+        ),
+    ):
+        _verify_bible()
+    out = capsys.readouterr().out
+    assert "Bible consistency" in out
+    assert "Bible drift" in out
+    assert "PASSED." in out
+
+
+def test_verify_bible_drift_section_shows_all_five_categories(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Every DriftReport category appears with a count, even at 0."""
+    with (
+        patch.object(
+            verify_module, "_run_consistency_check",
+            return_value=_ok_consistency(),
+        ),
+        patch.object(
+            verify_module, "_run_drift_check",
+            return_value=_empty_drift_report(),
+        ),
+    ):
+        _verify_bible()
+    out = capsys.readouterr().out
+    for cat in (
+        "in_sync", "notion_newer", "mirror_modified",
+        "orphan", "missing_from_meta",
+    ):
+        assert cat in out, f"missing drift category {cat} in stdout"
+
+
+def test_verify_bible_returns_one_on_consistency_drift(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """ConsistencyReport with ≥1 drift → exit 1, stderr hint emitted."""
+    drift = DriftRecord(
+        enum_name="RoleEnum",
+        drift_kind="bible_canonical",
+        code_values=frozenset({"A"}),
+        bible_values=frozenset({"B"}),
+        bible_section="bible 02 §4.1",
+        detail="code values differ from bible canonical",
+    )
+    with (
+        patch.object(
+            verify_module, "_run_consistency_check",
+            return_value=_drift_consistency(drift),
+        ),
+        patch.object(
+            verify_module, "_run_drift_check",
+            return_value=_empty_drift_report(),
+        ),
+    ):
+        rc = _verify_bible()
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "RoleEnum" in captured.out
+    assert "BIBLE HALT [consistency]" in captured.err
+    assert "Hint:" in captured.err
+    assert "enum drift" in captured.err.lower()
+
+
+def _drift_with(**categories: tuple[str, ...]) -> DriftReport:
+    """Build a DriftReport with selected categories populated."""
+    base = {
+        "in_sync": (), "notion_newer": (), "mirror_modified": (),
+        "orphan": (), "missing_from_meta": (),
+    }
+    base.update(categories)
+    return DriftReport(**base)  # type: ignore[arg-type]
+
+
+def test_verify_bible_returns_one_on_notion_newer_pages(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with (
+        patch.object(
+            verify_module, "_run_consistency_check",
+            return_value=_ok_consistency(),
+        ),
+        patch.object(
+            verify_module, "_run_drift_check",
+            return_value=_drift_with(notion_newer=("04_database",)),
+        ),
+    ):
+        rc = _verify_bible()
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "BIBLE DRIFT notion_newer" in captured.err
+    assert "cee sync-bible" in captured.err
+    assert "04_database" in captured.out
+
+
+def test_verify_bible_returns_one_on_mirror_modified_pages(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with (
+        patch.object(
+            verify_module, "_run_consistency_check",
+            return_value=_ok_consistency(),
+        ),
+        patch.object(
+            verify_module, "_run_drift_check",
+            return_value=_drift_with(mirror_modified=("00_vision",)),
+        ),
+    ):
+        rc = _verify_bible()
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "BIBLE DRIFT mirror_modified" in captured.err
+    assert "review local edits" in captured.err.lower()
+
+
+def test_verify_bible_returns_one_on_orphan_pages(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with (
+        patch.object(
+            verify_module, "_run_consistency_check",
+            return_value=_ok_consistency(),
+        ),
+        patch.object(
+            verify_module, "_run_drift_check",
+            return_value=_drift_with(orphan=("99_scratch",)),
+        ),
+    ):
+        rc = _verify_bible()
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "BIBLE DRIFT orphan" in captured.err
+    assert "remove from" in captured.err.lower()
+
+
+def test_verify_bible_returns_one_on_missing_from_meta_pages(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with (
+        patch.object(
+            verify_module, "_run_consistency_check",
+            return_value=_ok_consistency(),
+        ),
+        patch.object(
+            verify_module, "_run_drift_check",
+            return_value=_drift_with(missing_from_meta=("23_new",)),
+        ),
+    ):
+        rc = _verify_bible()
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "BIBLE DRIFT missing_from_meta" in captured.err
+    assert "cee sync-bible" in captured.err
+
+
+def test_verify_bible_handles_check_drift_credentials_missing(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """check_drift raises BootBibleSyncError → caught, rendered as halt."""
+    def raising(**_: object) -> object:
+        raise BootBibleSyncError(
+            kind="credentials_missing",
+            reason="no [anthropic] api_key",
+        )
+
+    with (
+        patch.object(
+            verify_module, "_run_consistency_check",
+            return_value=_ok_consistency(),
+        ),
+        patch.object(
+            verify_module, "_run_drift_check", side_effect=raising,
+        ),
+    ):
+        rc = _verify_bible()
+    captured = capsys.readouterr()
+    assert rc == 1
+    # Drift section in stdout shows the unavailable line.
+    assert "check unavailable" in captured.out
+    assert "BootBibleSyncError" in captured.out
+    # stderr block from _BOOT_HALT_HINTS reuse — same hint as T9 emits.
+    assert "BIBLE HALT [drift]" in captured.err
+    assert "credentials_missing" in captured.err
+    assert "~/.cee/credentials.toml" in captured.err
+    # Consistency section still ran and rendered.
+    assert "Bible consistency" in captured.out
+
+
+def test_verify_bible_consistency_clean_drift_dirty_exits_one() -> None:
+    """Mixed: ok consistency + drifty drift → exit 1."""
+    with (
+        patch.object(
+            verify_module, "_run_consistency_check",
+            return_value=_ok_consistency(),
+        ),
+        patch.object(
+            verify_module, "_run_drift_check",
+            return_value=_drift_with(notion_newer=("a", "b")),
+        ),
+    ):
+        rc = _verify_bible()
+    assert rc == 1
+
+
+def test_verify_bible_consistency_dirty_drift_clean_exits_one() -> None:
+    """Mixed: drifty consistency + clean drift → exit 1."""
+    drift = DriftRecord(
+        enum_name="TaskType", drift_kind="internal_schema",
+        code_values=None, bible_values=None,
+        bible_section="bible 08 §5.1",
+        detail="Classification disagrees with RunSummary",
+    )
+    with (
+        patch.object(
+            verify_module, "_run_consistency_check",
+            return_value=_drift_consistency(drift),
+        ),
+        patch.object(
+            verify_module, "_run_drift_check",
+            return_value=_empty_drift_report(),
+        ),
+    ):
+        rc = _verify_bible()
+    assert rc == 1
+
+
+def test_cmd_verify_with_bible_flag_dispatches_to_verify_bible() -> None:
+    """cmd_verify(--bible) calls _verify_bible exactly once."""
+    with patch.object(verify_module, "_verify_bible", return_value=0) as spy:
+        rc = cmd_verify(_ns(layout=False, schemas=False, boot=False, bible=True))
+    spy.assert_called_once()
+    assert rc == 0
+
+
+def test_cmd_verify_with_bible_and_boot_runs_both_max_exit_code() -> None:
+    """--bible --boot: both run; exit = max(boot_rc, bible_rc)."""
+    with (
+        patch.object(verify_module, "_verify_boot", return_value=0) as boot_spy,
+        patch.object(verify_module, "_verify_bible", return_value=1) as bible_spy,
+    ):
+        rc = cmd_verify(_ns(layout=False, schemas=False, boot=True, bible=True))
+    boot_spy.assert_called_once()
+    bible_spy.assert_called_once()
     assert rc == 1  # max(0, 1)

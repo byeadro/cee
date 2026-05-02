@@ -22,6 +22,17 @@ Phase 2 task 9 adds:
   ``result.ok`` directly and never relies on :func:`cli.main.main`'s
   outer ``BootError`` catch.
 
+Phase 2 task 10 adds:
+
+* ``--bible`` — runs both the cross-section consistency check
+  (:func:`boot.consistency.check`, T5) and the bible-drift check
+  (:func:`boot.bible_sync.check_drift`, T6) within a single report.
+  Exit 0 when both checks pass; exit 1 if either reports drift OR
+  :func:`check_drift` halts on :class:`errors.BootBibleSyncError`.
+  Like ``--boot``, this mode never propagates exceptions — drift-side
+  halts are caught and rendered as a section ✗ with reuse of T9's
+  ``_BOOT_HALT_HINTS`` table for the stderr remediation hint.
+
 Bible mapping (layout):
 
 * **04 §10.1** — Layout drift failure mode. The verifier is the
@@ -69,9 +80,8 @@ The 23-path layout canonical set:
 * **Audit logs (6)**: ``~/cee/audit/`` + ``archive/`` + four log files.
   Bible 12 §5.8 + bible 04 §5.1.
 
-Future ``cee verify`` modes (still out of scope as of T9):
+Future ``cee verify`` modes (still out of scope as of T10):
 
-* ``--bible`` — check the bible mirror against Notion (Phase 2 task 10).
 * ``--security`` — permission checks on ``raw_input.json`` etc.
   (Phase 5+).
 
@@ -81,6 +91,13 @@ Bible mapping (boot, task 9):
 * **20 §5.2 line 148** — names ``cee verify --boot`` verbatim.
 * **02 §7.13** — ``BOOT_SEQUENCER`` is the role; this command
   invokes it from the operator surface.
+
+Bible mapping (bible, task 10):
+
+* **00 §12 step B3** — cross-section consistency check.
+* **04 §5.5 + §5.6** — ``.sync_meta.json`` schema + drift detection
+  semantics (read by :func:`boot.bible_sync.check_drift`).
+* **20 §5.2 line 148** — names ``cee verify --bible`` verbatim.
 """
 
 from __future__ import annotations
@@ -92,6 +109,7 @@ import sys
 from pathlib import Path
 
 import paths
+from errors import BootBibleSyncError
 from roles import RoleEnum
 
 
@@ -574,23 +592,280 @@ def _verify_boot() -> int:
     return 1
 
 
+# ─── Bible verifier (Phase 2 task 10) ──────────────────────────────────
+
+
+# Drift-category remediation hints. Keyed by the :class:`boot.bible_sync.
+# DriftReport` field name; surfaced on stderr per category that contains
+# at least one item. A separate table from T9's :data:`_BOOT_HALT_HINTS`
+# because the keying shape differs (drift category vs error class+kind).
+# Long-term these belong in bible 19 §5.6 alongside the boot-halt hints
+# (downstream candidate alongside #24).
+_BIBLE_DRIFT_HINTS: dict[str, str] = {
+    "notion_newer":
+        "run `cee sync-bible` to pull updates from Notion",
+    "mirror_modified":
+        "review local edits; run `cee sync-bible --force` to overwrite "
+        "(Phase 5+ feature) or manually sync to Notion",
+    "orphan":
+        "remove from ~/cee/bible/ or add to .sync_meta.json "
+        "(manual until Phase 5+ tooling)",
+    "missing_from_meta":
+        "run `cee sync-bible` to fetch + register the page",
+}
+
+# DriftReport categories rendered in the per-category report block. The
+# tuple order is the canonical render order; each entry is
+# ``(field_name, render_label)``.
+_DRIFT_CATEGORIES: tuple[tuple[str, str], ...] = (
+    ("in_sync", "in_sync"),
+    ("notion_newer", "notion_newer"),
+    ("mirror_modified", "mirror_modified"),
+    ("orphan", "orphan"),
+    ("missing_from_meta", "missing_from_meta"),
+)
+
+# Categories that constitute "drift" — listed here because
+# :attr:`DriftReport.has_drift` already encodes the same set, but T10
+# also iterates per-category for stderr hint emission and needs an
+# explicit ordering.
+_DRIFT_FAILURE_CATEGORIES: tuple[str, ...] = (
+    "notion_newer", "mirror_modified", "orphan", "missing_from_meta",
+)
+
+# Pad the category-name column to one space past the longest entry
+# (``missing_from_meta`` = 17). Hard-coded so future relabel breaks
+# the visual grid loudly.
+_DRIFT_CATEGORY_COLUMN_WIDTH = 19
+
+
+def _run_consistency_check():
+    """Thin seam over :func:`boot.consistency.check`.
+
+    Tests mock this single seam via
+    ``patch.object(verify_module, "_run_consistency_check", ...)``
+    rather than monkey-patching :mod:`boot.consistency` directly.
+    Matches T9's ``_run_boot_sequence`` pattern.
+    """
+    from boot.consistency import check as _consistency_check
+
+    return _consistency_check()
+
+
+def _run_drift_check():
+    """Thin seam over :func:`boot.bible_sync.check_drift`.
+
+    Mirrors :func:`_run_consistency_check`. Per T6's contract,
+    :func:`boot.bible_sync.check_drift` raises
+    :class:`errors.BootBibleSyncError` on credentials_missing /
+    mcp_connect_failed / page_deleted; T10 catches these in
+    :func:`_verify_bible` and renders as a drift-section halt.
+    """
+    from boot.bible_sync import check_drift as _check_drift
+
+    return _check_drift()
+
+
+def _format_consistency_section(report) -> tuple[list[str], int]:
+    """Render the consistency section. Returns ``(stdout_lines, rc)``.
+
+    ``rc`` is ``0`` if ``report.ok``, ``1`` otherwise. Each
+    :class:`boot.consistency.DriftRecord` is rendered with its
+    ``enum_name``, ``drift_kind``, and short ``detail`` line so the
+    operator can map back to the bible canonical that diverged.
+    """
+    lines: list[str] = ["Bible consistency (B3 — boot.consistency.check):"]
+    if report.ok:
+        lines.append(
+            f"  ✓ all {report.enums_checked} enums consistent across "
+            "bible sections + code mirrors"
+        )
+        return lines, 0
+
+    lines.append(f"  ✗ {len(report.drifts)} drift(s) detected:")
+    for drift in report.drifts:
+        lines.append(
+            f"    - {drift.enum_name} ({drift.drift_kind}) — {drift.detail}"
+        )
+    return lines, 1
+
+
+def _format_drift_section(
+    report_or_exc,
+) -> tuple[list[str], list[str], int]:
+    """Render the drift section. Returns ``(stdout_lines, stderr_lines, rc)``.
+
+    ``report_or_exc`` is either a :class:`boot.bible_sync.DriftReport`
+    (success path — drift may or may not be present) or a
+    :class:`errors.BootBibleSyncError` (halt path — credentials_missing
+    / mcp_connect_failed / page_deleted). The halt path reuses T9's
+    :func:`_hint_for_halt` for the stderr hint so all
+    ``BootBibleSyncError`` kinds share one canonical hint table.
+    """
+    stdout: list[str] = ["Bible drift (B2 — boot.bible_sync.check_drift):"]
+    stderr: list[str] = []
+
+    # Halt path — _run_drift_check raised BootBibleSyncError.
+    if isinstance(report_or_exc, BaseException):
+        exc = report_or_exc
+        class_name = type(exc).__name__
+        kind = getattr(exc, "kind", None)
+        kind_render = f"(kind={kind})" if kind is not None else ""
+        stdout.append(f"  ✗ check unavailable: {class_name}{kind_render}")
+        stderr.append(f"BIBLE HALT [drift] {class_name}{kind_render}")
+        reason = getattr(exc, "reason", str(exc))
+        stderr.append(f"Reason: {reason}")
+        stderr.append(f"Hint: {_hint_for_halt(exc)}")
+        return stdout, stderr, 1
+
+    # Success path — DriftReport with per-category counts.
+    report = report_or_exc
+    has_drift = report.has_drift
+    for field_name, label in _DRIFT_CATEGORIES:
+        items: tuple[str, ...] = getattr(report, field_name)
+        is_drift_cat = field_name in _DRIFT_FAILURE_CATEGORIES
+        mark = "✗" if (is_drift_cat and items) else "✓"
+        label_col = label.ljust(_DRIFT_CATEGORY_COLUMN_WIDTH)
+        if items and is_drift_cat:
+            sample = ", ".join(items[:3])
+            if len(items) > 3:
+                sample += f", ... +{len(items) - 3} more"
+            stdout.append(
+                f"  {mark} {label_col}{len(items):>3} page(s): {sample}"
+            )
+        else:
+            stdout.append(f"  {mark} {label_col}{len(items):>3} page(s)")
+
+    if has_drift:
+        for cat in _DRIFT_FAILURE_CATEGORIES:
+            items = getattr(report, cat)
+            if not items:
+                continue
+            stderr.append(f"BIBLE DRIFT {cat}: {len(items)} page(s)")
+            stderr.append(f"Hint: {_BIBLE_DRIFT_HINTS[cat]}")
+        return stdout, stderr, 1
+
+    return stdout, [], 0
+
+
+def _verify_bible() -> int:
+    """Run the bible consistency + drift checks, render the operator report.
+
+    Two subsections:
+
+    * **Bible consistency** — local-only enum drift across bible sections
+      + code mirrors (:func:`boot.consistency.check`, T5). Never raises.
+    * **Bible drift** — local-vs-Notion comparison for each bible page
+      (:func:`boot.bible_sync.check_drift`, T6). May raise
+      :class:`errors.BootBibleSyncError` on
+      credentials_missing / mcp_connect_failed / page_deleted; T10
+      catches and renders as a section halt with stderr hint.
+
+    Per T9's contract pattern: this function does NOT propagate any
+    exception. The drift halt is caught internally and translated to
+    a section ✗ + stderr block + section_rc=1. Total exit code is
+    ``max(consistency_rc, drift_rc)``.
+
+    Returns
+    -------
+    int
+        ``0`` if both checks pass; ``1`` if either reports drift OR
+        the drift check halted on a :class:`errors.BootBibleSyncError`.
+        Exit code ``2`` is reserved for the outer
+        :func:`cli.main.main` catch — non-CEE exceptions only.
+    """
+    print("CEE Bible Verification")
+    print()
+
+    # Section 1 — consistency (local-only; never raises).
+    consistency_report = _run_consistency_check()
+    consistency_lines, consistency_rc = _format_consistency_section(
+        consistency_report
+    )
+    for line in consistency_lines:
+        print(line)
+    print()
+
+    # Section 2 — drift (catches BootBibleSyncError internally).
+    try:
+        drift_outcome = _run_drift_check()
+    except BootBibleSyncError as exc:
+        drift_outcome = exc
+    drift_stdout, drift_stderr, drift_rc = _format_drift_section(drift_outcome)
+    for line in drift_stdout:
+        print(line)
+    print()
+
+    # Summary line — describes both subsection outcomes in one sentence.
+    consistency_phrase = (
+        "bible consistent" if consistency_rc == 0 else
+        f"{len(consistency_report.drifts)} consistency drift(s)"
+    )
+    if isinstance(drift_outcome, BaseException):
+        drift_phrase = "drift check halted"
+    elif drift_rc == 0:
+        drift_phrase = "bible in sync"
+    else:
+        # DriftReport with at least one drift category populated.
+        drift_count = sum(
+            len(getattr(drift_outcome, cat))
+            for cat in _DRIFT_FAILURE_CATEGORIES
+        )
+        drift_phrase = f"{drift_count} drift item(s) detected"
+    print(f"Summary: {consistency_phrase}; {drift_phrase}.")
+
+    total_rc = max(consistency_rc, drift_rc)
+    if total_rc == 0:
+        print("PASSED.")
+        return 0
+
+    # Failure stdout banner — discriminates which subsection(s) failed.
+    if consistency_rc and drift_rc:
+        print("FAILED: bible consistency check failed AND drift detected.")
+    elif consistency_rc:
+        print("FAILED: bible consistency check failed.")
+    elif isinstance(drift_outcome, BaseException):
+        print("FAILED: bible drift check did not complete.")
+    else:
+        print("FAILED: bible mirror has drift vs Notion.")
+
+    # stderr halt + drift hints. Consistency drift gets its own line
+    # using the existing _BOOT_HALT_HINTS table so BootConsistencyError's
+    # remediation matches the one T9 emits when the same class halts
+    # boot at B3.
+    if consistency_rc:
+        from errors import BootConsistencyError
+
+        synthetic = BootConsistencyError(drifts=list(consistency_report.drifts))
+        sys.stderr.write(
+            f"BIBLE HALT [consistency] BootConsistencyError"
+            f"({len(consistency_report.drifts)} drifts)\n"
+        )
+        sys.stderr.write(f"Hint: {_hint_for_halt(synthetic)}\n")
+    for line in drift_stderr:
+        sys.stderr.write(line + "\n")
+
+    return 1
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     """``cee verify`` dispatcher.
 
     Phase 1 shipped ``--layout`` and ``--schemas``; Phase 2 task 9
-    adds ``--boot``. Future modes (``--bible``, ``--security``) plug
-    in here. Behaviour:
+    added ``--boot``; Phase 2 task 10 adds ``--bible``. Future modes
+    (``--security``) plug in here. Behaviour:
 
     * No flag → print usage hint to stderr, return ``2`` (matches
       argparse's malformed-invocation exit code).
     * One flag → run that mode, return its exit code.
     * Multiple flags → run each mode in declaration order
-      (layout → schemas → boot), return the worst exit code so a
-      failure in any is surfaced.
+      (layout → schemas → boot → bible), return the worst exit code
+      so a failure in any is surfaced.
     """
-    if not (args.layout or args.schemas or args.boot):
+    if not (args.layout or args.schemas or args.boot or args.bible):
         print(
-            "Specify a verify mode (e.g. --layout, --schemas, or --boot)",
+            "Specify a verify mode "
+            "(e.g. --layout, --schemas, --boot, or --bible)",
             file=sys.stderr,
         )
         return 2
@@ -602,4 +877,6 @@ def cmd_verify(args: argparse.Namespace) -> int:
         exit_codes.append(_verify_schemas())
     if args.boot:
         exit_codes.append(_verify_boot())
+    if args.bible:
+        exit_codes.append(_verify_bible())
     return max(exit_codes)
