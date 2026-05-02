@@ -28,6 +28,7 @@ import argparse
 import sys
 
 from cli.commands.init import cmd_init
+from cli.commands.sync_bible import cmd_sync_bible
 from cli.commands.verify import cmd_verify
 from errors import BootError
 
@@ -78,6 +79,12 @@ def main(argv: list[str] | None = None) -> int:
         "(bible 04 §6.1 + 10 §6.3 + 11 §6.2)",
     )
     verify_parser.set_defaults(func=cmd_verify)
+
+    sync_bible_parser = subparsers.add_parser(
+        "sync-bible",
+        help="Sync the bible mirror from Notion (bible 04 §5.6)",
+    )
+    sync_bible_parser.set_defaults(func=cmd_sync_bible)
 
     args = parser.parse_args(argv)
     try:
