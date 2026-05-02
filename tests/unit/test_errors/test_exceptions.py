@@ -15,7 +15,11 @@ import pytest
 from errors import (
     BootBibleSyncError,
     BootConsistencyError,
+    BootEnvironmentError,
     BootError,
+    BootRegistryError,
+    BootRunIndexError,
+    BootSchemaError,
     CEEException,
     HaltType,
     InjectionDetected,
@@ -432,3 +436,172 @@ def test_boot_bible_sync_error_caught_by_BootError() -> None:
         assert exc.detail == {"parent_page_id": "abc"}
     else:
         pytest.fail("BootError did not catch BootBibleSyncError")
+
+
+# --------------------------------------------------------------------------- #
+# BootBibleSyncErrorKind extension (Phase 2 task 8)                           #
+# --------------------------------------------------------------------------- #
+#
+# T8 adds a fourth kind value: "auto_sync_disabled" (bible 00 §12 step B2
+# halt path when drift detected and auto_sync = false). Surface as
+# downstream candidate at commit.
+
+
+def test_boot_bible_sync_error_kind_auto_sync_disabled() -> None:
+    exc = BootBibleSyncError(
+        kind="auto_sync_disabled",
+        reason="drift detected and auto_sync=false",
+    )
+    assert exc.kind == "auto_sync_disabled"
+    assert exc.step == "B2"
+    assert "auto_sync_disabled" in str(exc)
+
+
+# --------------------------------------------------------------------------- #
+# BootEnvironmentError (Phase 2 task 8 — boot/sequencer.py B1)                #
+# --------------------------------------------------------------------------- #
+
+
+def test_boot_environment_error_inherits_from_boot_error() -> None:
+    assert issubclass(BootEnvironmentError, BootError)
+    assert issubclass(BootEnvironmentError, CEEException)
+
+
+def test_boot_environment_error_step_is_B1() -> None:
+    exc = BootEnvironmentError(reason="x", kind="python_version")
+    assert exc.step == "B1"
+
+
+@pytest.mark.parametrize(
+    "kind",
+    ["python_version", "missing_package", "path_not_writable", "config_invalid"],
+)
+def test_boot_environment_error_all_kinds(kind: str) -> None:
+    exc = BootEnvironmentError(reason="any", kind=kind)  # type: ignore[arg-type]
+    assert exc.kind == kind
+    assert exc.step == "B1"
+    assert kind in str(exc)
+
+
+def test_boot_environment_error_detail_preserved() -> None:
+    detail = {"actual": "3.9.7", "required": "3.10"}
+    exc = BootEnvironmentError(
+        reason="too old", kind="python_version", detail=detail
+    )
+    assert exc.detail == detail
+
+
+def test_boot_environment_error_detail_defaults_to_empty_dict() -> None:
+    exc = BootEnvironmentError(reason="x", kind="missing_package")
+    assert exc.detail == {}
+
+
+def test_boot_environment_error_caught_via_BootError() -> None:
+    try:
+        raise BootEnvironmentError(reason="x", kind="config_invalid")
+    except BootError as exc:
+        assert isinstance(exc, BootEnvironmentError)
+        assert exc.step == "B1"
+    else:
+        pytest.fail("BootError did not catch BootEnvironmentError")
+
+
+# --------------------------------------------------------------------------- #
+# BootRegistryError (Phase 2 task 8 — boot/sequencer.py B4 + B5)              #
+# --------------------------------------------------------------------------- #
+
+
+def test_boot_registry_error_inherits_from_boot_error() -> None:
+    assert issubclass(BootRegistryError, BootError)
+    assert issubclass(BootRegistryError, CEEException)
+
+
+def test_boot_registry_error_skill_kind_is_step_B4() -> None:
+    exc = BootRegistryError(reason="permission denied", kind="skill")
+    assert exc.step == "B4"
+    assert exc.kind == "skill"
+
+
+def test_boot_registry_error_agent_kind_is_step_B5() -> None:
+    exc = BootRegistryError(reason="permission denied", kind="agent")
+    assert exc.step == "B5"
+    assert exc.kind == "agent"
+
+
+def test_boot_registry_error_detail_preserved() -> None:
+    detail = {"skills_dir": "/tmp/skills", "exception_type": "PermissionError"}
+    exc = BootRegistryError(reason="r", kind="skill", detail=detail)
+    assert exc.detail == detail
+
+
+def test_boot_registry_error_caught_via_BootError() -> None:
+    try:
+        raise BootRegistryError(reason="x", kind="agent")
+    except BootError as exc:
+        assert isinstance(exc, BootRegistryError)
+        assert exc.step == "B5"
+    else:
+        pytest.fail("BootError did not catch BootRegistryError")
+
+
+# --------------------------------------------------------------------------- #
+# BootSchemaError (Phase 2 task 8 — boot/sequencer.py B6)                     #
+# --------------------------------------------------------------------------- #
+
+
+def test_boot_schema_error_inherits_from_boot_error() -> None:
+    assert issubclass(BootSchemaError, BootError)
+    assert issubclass(BootSchemaError, CEEException)
+
+
+def test_boot_schema_error_step_is_B6() -> None:
+    exc = BootSchemaError(reason="syntax error", module_name="intent_object")
+    assert exc.step == "B6"
+
+
+def test_boot_schema_error_module_name_preserved() -> None:
+    exc = BootSchemaError(reason="r", module_name="sync_meta")
+    assert exc.module_name == "sync_meta"
+    assert "sync_meta" in str(exc)
+
+
+def test_boot_schema_error_caught_via_BootError() -> None:
+    try:
+        raise BootSchemaError(reason="x", module_name="config")
+    except BootError as exc:
+        assert isinstance(exc, BootSchemaError)
+        assert exc.step == "B6"
+        assert exc.module_name == "config"
+    else:
+        pytest.fail("BootError did not catch BootSchemaError")
+
+
+# --------------------------------------------------------------------------- #
+# BootRunIndexError (Phase 2 task 8 — boot/sequencer.py B7)                   #
+# --------------------------------------------------------------------------- #
+
+
+def test_boot_run_index_error_inherits_from_boot_error() -> None:
+    assert issubclass(BootRunIndexError, BootError)
+    assert issubclass(BootRunIndexError, CEEException)
+
+
+def test_boot_run_index_error_step_is_B7() -> None:
+    exc = BootRunIndexError(reason="permission denied")
+    assert exc.step == "B7"
+
+
+def test_boot_run_index_error_detail_preserved() -> None:
+    detail = {"runs_dir": "/tmp/runs", "exception_type": "OSError"}
+    exc = BootRunIndexError(reason="r", detail=detail)
+    assert exc.detail == detail
+
+
+def test_boot_run_index_error_caught_via_BootError() -> None:
+    try:
+        raise BootRunIndexError(reason="x")
+    except BootError as exc:
+        assert isinstance(exc, BootRunIndexError)
+        assert exc.step == "B7"
+    else:
+        pytest.fail("BootError did not catch BootRunIndexError")

@@ -91,7 +91,7 @@ class BootConsistencyError(BootError):
         super().__init__(step="B3", reason=summary)
 
 
-# ``BootBibleSyncError`` halt-cause taxonomy. Three values today:
+# ``BootBibleSyncError`` halt-cause taxonomy. Four values today:
 #
 # * ``mcp_connect_failed`` — bible 04 §5.6 step 2 ("halt before any page
 #   fetch if connection fails"). Initial Anthropic / Notion MCP transport
@@ -106,10 +106,16 @@ class BootConsistencyError(BootError):
 #   value treats missing credentials as a connect-equivalent halt cause
 #   (no pages can be touched) but the bible should canonize this
 #   explicitly. Tracked as downstream candidate #13 at T6 commit time.
+# * ``auto_sync_disabled`` — INFERRED halt cause added by T8. Bible 00
+#   §12 step B2 canonizes the halt path itself ("else halts with
+#   instruction to run it manually") when boot detects drift and
+#   ``auto_sync = false``. The kind name is inferred. Tracked as
+#   downstream candidate at T8 commit time.
 BootBibleSyncErrorKind = Literal[
     "mcp_connect_failed",
     "page_deleted",
     "credentials_missing",
+    "auto_sync_disabled",
 ]
 
 
@@ -150,6 +156,127 @@ class BootBibleSyncError(BootError):
         self.kind: BootBibleSyncErrorKind = kind
         self.detail: dict[str, Any] = detail or {}
         super().__init__(step="B2", reason=f"{kind}: {reason}")
+
+
+BootEnvironmentErrorKind = Literal[
+    "python_version",
+    "missing_package",
+    "path_not_writable",
+    "config_invalid",
+]
+
+
+class BootEnvironmentError(BootError):
+    """Boot step B1 failed: runtime environment unsuitable for CEE.
+
+    Per bible 00 §12 step B1: "Check Python version, required packages,
+    write permissions on ``~/cee/``, ``~/SecondBrain/cee/``. Halt on
+    any failure." The four halt kinds discriminate the failure mode:
+
+    * ``python_version`` — interpreter version below the floor.
+    * ``missing_package`` — a required first-party module or third-
+      party package failed to import.
+    * ``path_not_writable`` — a required directory is missing or the
+      user lacks write permission. Covers ``~/cee/``, the audit dir,
+      and the Obsidian vault root per bible 02 §7.13's allowed_writes.
+    * ``config_invalid`` — ``~/.cee/config.toml`` is missing or fails
+      to parse / validate against :class:`schemas.Config`. Bible 00
+      §12 B1 implies env validation; T8 reads the config here so B2
+      can rely on it without re-loading.
+
+    ``detail`` carries structured context (path that failed, package
+    name, etc.) so the boot.log entry is useful for forensics.
+    """
+
+    def __init__(
+        self,
+        *,
+        reason: str,
+        kind: BootEnvironmentErrorKind,
+        detail: dict[str, Any] | None = None,
+    ) -> None:
+        self.kind: BootEnvironmentErrorKind = kind
+        self.detail: dict[str, Any] = detail or {}
+        super().__init__(step="B1", reason=f"{kind}: {reason}")
+
+
+BootRegistryErrorKind = Literal["skill", "agent"]
+
+
+class BootRegistryError(BootError):
+    """Boot step B4 or B5 failed catastrophically.
+
+    Per bible 00 §12 step B4: "Skills with invalid frontmatter are
+    logged and skipped, not loaded." Per-entry parse failures are
+    handled inside :func:`skill_engine.registry.rebuild` and
+    :func:`agent_selector.registry.rebuild`; they do NOT raise.
+    This class is for irrecoverable failures only — filesystem
+    unreadable, atomic write to ``index.json`` failed, etc.
+
+    ``kind`` discriminates which registry failed (and therefore
+    which boot step):
+
+    * ``skill`` → step B4 (``skill_engine.registry``).
+    * ``agent`` → step B5 (``agent_selector.registry``).
+    """
+
+    def __init__(
+        self,
+        *,
+        reason: str,
+        kind: BootRegistryErrorKind,
+        detail: dict[str, Any] | None = None,
+    ) -> None:
+        self.kind: BootRegistryErrorKind = kind
+        self.detail: dict[str, Any] = detail or {}
+        step = "B4" if kind == "skill" else "B5"
+        super().__init__(step=step, reason=f"{kind}: {reason}")
+
+
+class BootSchemaError(BootError):
+    """Boot step B6 failed: a schemas/* module did not import cleanly.
+
+    Per bible 00 §12 step B6: "Pre-compile all Pydantic models from
+    ``~/cee/schemas/``." In Python this means importing every module
+    under ``schemas/`` so its Pydantic classes go through validation-
+    schema construction at class-definition time.
+
+    Carries the offending module name (e.g. ``"sync_meta"``) and a
+    ``detail`` payload with the underlying exception type so boot.log
+    forensics can pinpoint the regression.
+    """
+
+    def __init__(
+        self,
+        *,
+        reason: str,
+        module_name: str,
+        detail: dict[str, Any] | None = None,
+    ) -> None:
+        self.module_name: str = module_name
+        self.detail: dict[str, Any] = detail or {}
+        super().__init__(step="B6", reason=f"{module_name}: {reason}")
+
+
+class BootRunIndexError(BootError):
+    """Boot step B7 failed: cannot walk ``~/cee/runs/`` to build index.
+
+    Per bible 00 §12 step B7: "Index the last 50 Run logs by
+    ``IntentObject.goal`` for similarity search during Skill
+    resolution." An EMPTY index is success, not failure — Phase 2
+    substrate has no Run logs and B7 returns an empty index. This
+    class is for IO-level failures only (runs dir unreadable,
+    permission denied, etc.).
+    """
+
+    def __init__(
+        self,
+        *,
+        reason: str,
+        detail: dict[str, Any] | None = None,
+    ) -> None:
+        self.detail: dict[str, Any] = detail or {}
+        super().__init__(step="B7", reason=reason)
 
 
 class ValidationError(CEEException):

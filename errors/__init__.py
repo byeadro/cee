@@ -7,7 +7,11 @@ the exception class hierarchy from §5.7.
 from errors.exceptions import (
     BootBibleSyncError,
     BootConsistencyError,
+    BootEnvironmentError,
     BootError,
+    BootRegistryError,
+    BootRunIndexError,
+    BootSchemaError,
     CEEException,
     InjectionDetected,
     PipelineHalt,
@@ -32,6 +36,11 @@ __all__ = [
     "BootError",
     "BootConsistencyError",
     "BootBibleSyncError",
+    # BootError subclasses added by Phase 2 task 8 (boot/sequencer.py)
+    "BootEnvironmentError",
+    "BootRegistryError",
+    "BootSchemaError",
+    "BootRunIndexError",
     "ValidationError",
     "RoleAuthorityError",
     "SubstrateBoundaryError",
