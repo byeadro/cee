@@ -12,6 +12,16 @@ Phase 1 ships two modes:
   declare ``produced_by: RoleEnum``, and asserts ``model_json_schema()``
   output round-trips through ``json.dumps``/``json.loads``.
 
+Phase 2 task 9 adds:
+
+* ``--boot`` — runs the canonical boot sequence (:func:`boot.sequencer.run`,
+  T8) and renders the per-step + halt-aware report. Exit 0 when
+  :class:`boot.sequencer.BootResult` reports ``ok=True``; exit 1 on any
+  halt at B1–B7. Per T8 design, ``boot.sequencer.run`` returns a
+  :class:`BootResult` rather than raising — so this mode inspects
+  ``result.ok`` directly and never relies on :func:`cli.main.main`'s
+  outer ``BootError`` catch.
+
 Bible mapping (layout):
 
 * **04 §10.1** — Layout drift failure mode. The verifier is the
@@ -59,11 +69,18 @@ The 23-path layout canonical set:
 * **Audit logs (6)**: ``~/cee/audit/`` + ``archive/`` + four log files.
   Bible 12 §5.8 + bible 04 §5.1.
 
-Future ``cee verify`` modes (out of scope for Phase 1):
+Future ``cee verify`` modes (still out of scope as of T9):
 
-* ``--bible`` — check the bible mirror against Notion (Phase 2).
+* ``--bible`` — check the bible mirror against Notion (Phase 2 task 10).
 * ``--security`` — permission checks on ``raw_input.json`` etc.
   (Phase 5+).
+
+Bible mapping (boot, task 9):
+
+* **00 §12** — the canonical 9-step boot sequence (B1–B9).
+* **20 §5.2 line 148** — names ``cee verify --boot`` verbatim.
+* **02 §7.13** — ``BOOT_SEQUENCER`` is the role; this command
+  invokes it from the operator surface.
 """
 
 from __future__ import annotations
@@ -372,22 +389,208 @@ def _verify_schemas() -> int:
     return 1
 
 
+# ─── Boot verifier (Phase 2 task 9) ─────────────────────────────────────
+
+
+# Remediation hints surfaced on halt. Keyed by ``(error_class_name,
+# kind)``; the dispatcher falls back to ``(error_class_name, None)`` if
+# the exact ``kind`` isn't registered, then to a generic catch-all line
+# if neither lookup hits. Hints intentionally point the OPERATOR at the
+# bible §s that justify the halt cause so the recovery is grounded.
+#
+# The canonical home for these hints is bible 19 §5.6 ("user-facing
+# message format" with "To resume" exact CLI commands). T9 ships them
+# inline; surface as downstream candidate for migration into a bible-
+# read template loader once Phase 3+ ships :mod:`errors.messages`.
+_BOOT_HALT_HINTS: dict[tuple[str, str | None], str] = {
+    ("BootEnvironmentError", "python_version"):
+        "upgrade Python to >= 3.11 (tomllib stdlib requirement)",
+    ("BootEnvironmentError", "missing_package"):
+        "reinstall dependencies via `pip install -e .`",
+    ("BootEnvironmentError", "path_not_writable"):
+        "check ownership/permissions on the listed path; "
+        "run `cee init` if the directory is missing",
+    ("BootEnvironmentError", "config_invalid"):
+        "run `cee init` to scaffold ~/.cee/config.toml from the template",
+    ("BootBibleSyncError", "credentials_missing"):
+        "populate ~/.cee/credentials.toml [anthropic] api_key per bible 04 §5.2",
+    ("BootBibleSyncError", "mcp_connect_failed"):
+        "check Notion MCP transport reachability; "
+        "verify [anthropic] api_key validity",
+    ("BootBibleSyncError", "page_deleted"):
+        "restore the bible parent page in Notion per bible 04 §9 EC9",
+    ("BootBibleSyncError", "auto_sync_disabled"):
+        "run `cee sync-bible` manually, OR set `auto_sync = true` "
+        "in ~/.cee/config.toml",
+    ("BootConsistencyError", None):
+        "reconcile the listed enum drifts — bible canonicals vs code mirrors",
+    ("BootRegistryError", "skill"):
+        "check filesystem permissions on ~/cee/skills/",
+    ("BootRegistryError", "agent"):
+        "check filesystem permissions on ~/cee/.claude/agents/",
+    ("BootSchemaError", None):
+        "check the named schemas/* module for syntax / import errors",
+    ("BootRunIndexError", None):
+        "check filesystem permissions on ~/cee/runs/",
+}
+
+_BOOT_HALT_HINT_FALLBACK = (
+    "contact operator; see ~/cee/audit/boot.log for full halt details"
+)
+
+
+# Per-step labels rendered next to ``B<n>`` in the report. Closed set —
+# matches bible 00 §12's nine canonical steps verbatim.
+_BOOT_STEP_LABELS: dict[str, str] = {
+    "B1": "verify_environment",
+    "B2": "load_bible",
+    "B3": "consistency_check",
+    "B4": "build_skill_registry",
+    "B5": "build_agent_registry",
+    "B6": "load_schemas",
+    "B7": "load_recent_runs",
+    "B8": "drain_promotion_queue",
+    "B9": "ready",
+}
+
+# Pad the per-step label column to one space past the longest entry
+# (``build_agent_registry`` = 20). Hard-coded so a future relabel
+# loudly breaks the visual grid instead of silently shifting columns.
+_BOOT_LABEL_COLUMN_WIDTH = 22
+
+
+def _run_boot_sequence():
+    """Thin seam over :func:`boot.sequencer.run`.
+
+    Tests mock this single seam via
+    ``patch.object(verify_module, "_run_boot_sequence", ...)`` rather
+    than monkey-patching :mod:`boot.sequencer` directly, matching the
+    existing ``patch.object(verify_module, "_verify_layout")`` pattern.
+    """
+    from boot.sequencer import run as _boot_run
+
+    return _boot_run()
+
+
+def _format_step_line(step: object) -> str:
+    """One report line for one :class:`boot.sequencer.BootStepResult`."""
+    label = _BOOT_STEP_LABELS.get(step.step, "?")
+    mark = "✓" if step.ok else "✗"
+    label_col = label.ljust(_BOOT_LABEL_COLUMN_WIDTH)
+    summary = step.summary
+    # Cap summary to keep the visual grid readable; the full payload is
+    # always preserved on the BootResult itself for programmatic access.
+    if len(summary) > 60:
+        summary = summary[:57] + "..."
+    summary_col = summary.ljust(60)
+    return f"  {mark} {step.step}  {label_col}{summary_col}  ({step.duration_ms} ms)"
+
+
+def _hint_for_halt(halt_error: object) -> str:
+    """Look up the remediation hint for a typed :class:`BootError`.
+
+    Lookup precedence: ``(class_name, kind)`` → ``(class_name, None)``
+    → :data:`_BOOT_HALT_HINT_FALLBACK`.
+    """
+    class_name = type(halt_error).__name__
+    kind = getattr(halt_error, "kind", None)
+    if (class_name, kind) in _BOOT_HALT_HINTS:
+        return _BOOT_HALT_HINTS[(class_name, kind)]
+    if (class_name, None) in _BOOT_HALT_HINTS:
+        return _BOOT_HALT_HINTS[(class_name, None)]
+    return _BOOT_HALT_HINT_FALLBACK
+
+
+def _verify_boot() -> int:
+    """Run the canonical boot sequence and render the operator report.
+
+    Per T8's contract, :func:`boot.sequencer.run` returns a
+    :class:`boot.sequencer.BootResult` — it does NOT propagate
+    :class:`errors.BootError` to its caller. Halt is reflected in
+    ``result.ok=False`` + ``result.halt_step`` + ``result.halt_error``.
+    This function inspects ``result.ok`` directly and translates to an
+    exit code; it does NOT rely on :func:`cli.main.main`'s outer
+    ``BootError`` catch (which remains live as a safety net for any
+    unexpected raise from within the sequencer).
+
+    Returns
+    -------
+    int
+        ``0`` if every B-step succeeded (B1–B9 all green; B8 best-
+        effort warnings do not gate the exit code per T8 design);
+        ``1`` if the sequencer halted at any of B1–B7. Exit code
+        ``2`` is reserved for the outer :func:`cli.main.main` catch
+        — non-CEE exceptions only.
+    """
+    result = _run_boot_sequence()
+
+    print("CEE Boot Verification")
+    print()
+    print("Boot sequence (B1–B9):")
+    for step in result.steps:
+        print(_format_step_line(step))
+    print()
+
+    # Warnings (rendered before Summary so the OPERATOR sees them in
+    # context with the per-step report).
+    if result.warnings:
+        print(f"Warnings ({len(result.warnings)}):")
+        for warning in result.warnings:
+            print(f"  ! {warning}")
+        print()
+
+    passed_count = sum(1 for s in result.steps if s.ok)
+    if result.ok:
+        print(
+            f"Summary: {passed_count} of 9 steps passed. "
+            f"Total duration: {result.total_duration_ms} ms. "
+            f"{len(result.warnings)} warning(s)."
+        )
+        print("PASSED.")
+        return 0
+
+    # Halt path. ``halt_step`` and ``halt_error`` are guaranteed
+    # populated when ok=False per T8's BootResult contract.
+    halt_step = result.halt_step
+    halt_error = result.halt_error
+    print(
+        f"Summary: {passed_count} of 9 steps passed (halted at {halt_step}). "
+        f"Total duration: {result.total_duration_ms} ms."
+    )
+    print(f"FAILED: boot halted at {halt_step}.")
+
+    # Halt detail to stderr — separable from the stdout report so log
+    # scrapers can grep for ``BOOT HALT`` independently.
+    class_name = type(halt_error).__name__
+    kind = getattr(halt_error, "kind", None)
+    kind_render = f"(kind={kind})" if kind is not None else ""
+    sys.stderr.write(
+        f"BOOT HALT [{halt_step}] {class_name}{kind_render}\n"
+    )
+    reason = getattr(halt_error, "reason", str(halt_error))
+    sys.stderr.write(f"Reason: {reason}\n")
+    sys.stderr.write(f"Hint: {_hint_for_halt(halt_error)}\n")
+
+    return 1
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     """``cee verify`` dispatcher.
 
-    Phase 1 ships ``--layout`` and ``--schemas``. Future modes
-    (``--bible``, ``--security``) plug in here. Behaviour:
+    Phase 1 shipped ``--layout`` and ``--schemas``; Phase 2 task 9
+    adds ``--boot``. Future modes (``--bible``, ``--security``) plug
+    in here. Behaviour:
 
-    * Neither flag → print usage hint to stderr, return ``2`` (matches
+    * No flag → print usage hint to stderr, return ``2`` (matches
       argparse's malformed-invocation exit code).
     * One flag → run that mode, return its exit code.
-    * Both flags → run both modes (in declaration order: layout, then
-      schemas), return the worst exit code so a failure in either is
-      surfaced.
+    * Multiple flags → run each mode in declaration order
+      (layout → schemas → boot), return the worst exit code so a
+      failure in any is surfaced.
     """
-    if not (args.layout or args.schemas):
+    if not (args.layout or args.schemas or args.boot):
         print(
-            "Specify a verify mode (e.g. --layout or --schemas)",
+            "Specify a verify mode (e.g. --layout, --schemas, or --boot)",
             file=sys.stderr,
         )
         return 2
@@ -397,4 +600,6 @@ def cmd_verify(args: argparse.Namespace) -> int:
         exit_codes.append(_verify_layout())
     if args.schemas:
         exit_codes.append(_verify_schemas())
+    if args.boot:
+        exit_codes.append(_verify_boot())
     return max(exit_codes)

@@ -78,6 +78,12 @@ def main(argv: list[str] | None = None) -> int:
         "produce JSON-serializable model_json_schema() output "
         "(bible 04 §6.1 + 10 §6.3 + 11 §6.2)",
     )
+    verify_parser.add_argument(
+        "--boot",
+        action="store_true",
+        help="Run the canonical boot sequence (B1-B9 per bible 00 §12) "
+        "and report per-step results + halt detail (bible 20 §5.2)",
+    )
     verify_parser.set_defaults(func=cmd_verify)
 
     sync_bible_parser = subparsers.add_parser(

@@ -106,9 +106,13 @@ def cee_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]
     }
 
 
-def _ns(layout: bool = True, schemas: bool = False) -> argparse.Namespace:
+def _ns(
+    layout: bool = True, schemas: bool = False, boot: bool = False,
+) -> argparse.Namespace:
     """Argparse Namespace stand-in matching the verify subparser shape."""
-    return argparse.Namespace(layout=layout, schemas=schemas, command="verify")
+    return argparse.Namespace(
+        layout=layout, schemas=schemas, boot=boot, command="verify"
+    )
 
 
 # ─── Happy path ─────────────────────────────────────────────────────────
@@ -349,13 +353,14 @@ def test_cmd_verify_without_any_flag_returns_two(
     cee_root: dict[str, Path], capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Bare ``cee verify`` (no mode) → exit 2 + usage hint on stderr."""
-    rc = cmd_verify(_ns(layout=False, schemas=False))
+    rc = cmd_verify(_ns(layout=False, schemas=False, boot=False))
     captured = capsys.readouterr()
     assert rc == 2
     assert "Specify a verify mode" in captured.err
-    # The hint must mention both currently-shipping modes.
+    # The hint must mention all three currently-shipping modes.
     assert "--layout" in captured.err
     assert "--schemas" in captured.err
+    assert "--boot" in captured.err
     # Nothing written to stdout (the report belongs to a real mode).
     assert captured.out == ""
 
@@ -834,3 +839,262 @@ def test_cmd_verify_with_layout_only_does_not_invoke_schemas() -> None:
     ):
         cmd_verify(_ns(layout=True, schemas=False))
     schemas_spy.assert_not_called()
+
+
+# ─── _verify_boot (Phase 2 task 9) ─────────────────────────────────────
+#
+# Tests mock the single ``_run_boot_sequence`` seam in ``verify_module``
+# and supply canned BootResult / BootStepResult instances. This isolates
+# the renderer + exit-code logic from the full T8 sequencer machinery
+# (which has its own 59-test unit suite). T8's contract: run() returns
+# BootResult; never raises BootError. T9's _verify_boot reads result.ok
+# directly and translates to exit codes.
+
+
+from boot.sequencer import BootResult, BootStepResult  # noqa: E402
+from cli.commands.verify import (  # noqa: E402
+    _BOOT_HALT_HINTS,
+    _hint_for_halt,
+    _run_boot_sequence,
+    _verify_boot,
+)
+from errors import (  # noqa: E402
+    BootBibleSyncError,
+    BootConsistencyError,
+    BootEnvironmentError,
+    BootError,
+    BootRegistryError,
+    BootRunIndexError,
+    BootSchemaError,
+)
+
+
+def _step(
+    name: str, ok: bool = True, summary: str = "ok", duration_ms: int = 1,
+) -> BootStepResult:
+    return BootStepResult(
+        step=name, ok=ok, duration_ms=duration_ms, summary=summary, payload={}
+    )
+
+
+def _ok_boot_result(total_ms: int = 75) -> BootResult:
+    return BootResult(
+        ok=True,
+        steps=tuple(_step(s, summary=f"{s} OK") for s in (
+            "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9"
+        )),
+        halt_step=None,
+        halt_error=None,
+        warnings=(),
+        total_duration_ms=total_ms,
+    )
+
+
+def _halt_boot_result(
+    *, halt_step: str, halt_error: BootError, completed: tuple[str, ...] = ("B1",),
+) -> BootResult:
+    """Build a BootResult that halted at ``halt_step``.
+
+    ``completed`` lists the steps that ran successfully before the halt;
+    the failing step is added as ok=False at the end.
+    """
+    steps = [_step(s) for s in completed]
+    steps.append(_step(halt_step, ok=False, summary=f"{halt_step} halted"))
+    return BootResult(
+        ok=False,
+        steps=tuple(steps),
+        halt_step=halt_step,
+        halt_error=halt_error,
+        warnings=(),
+        total_duration_ms=100,
+    )
+
+
+def test_verify_boot_returns_zero_on_happy_result() -> None:
+    """All 9 steps succeed → _verify_boot returns 0."""
+    with patch.object(
+        verify_module, "_run_boot_sequence", return_value=_ok_boot_result()
+    ):
+        rc = _verify_boot()
+    assert rc == 0
+
+
+def test_verify_boot_stdout_lists_all_nine_steps_on_happy_path(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Every B1-B9 step appears with a ✓ mark."""
+    with patch.object(
+        verify_module, "_run_boot_sequence", return_value=_ok_boot_result()
+    ):
+        _verify_boot()
+    out = capsys.readouterr().out
+    for step in ("B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9"):
+        assert step in out, f"missing step {step} in stdout"
+    # ✓ mark must appear at least once per step.
+    assert out.count("✓") >= 9
+
+
+def test_verify_boot_stdout_includes_summary_and_passed_on_happy(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with patch.object(
+        verify_module, "_run_boot_sequence", return_value=_ok_boot_result()
+    ):
+        _verify_boot()
+    out = capsys.readouterr().out
+    assert "Summary: 9 of 9 steps passed." in out
+    assert "PASSED." in out
+
+
+def test_verify_boot_returns_one_on_halt_at_b1() -> None:
+    halt = _halt_boot_result(
+        halt_step="B1",
+        halt_error=BootEnvironmentError(
+            reason="config missing", kind="config_invalid"
+        ),
+        completed=(),
+    )
+    with patch.object(verify_module, "_run_boot_sequence", return_value=halt):
+        rc = _verify_boot()
+    assert rc == 1
+
+
+def test_verify_boot_stderr_includes_halt_class_and_kind_on_halt(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    halt = _halt_boot_result(
+        halt_step="B1",
+        halt_error=BootEnvironmentError(
+            reason="too old", kind="python_version"
+        ),
+        completed=(),
+    )
+    with patch.object(verify_module, "_run_boot_sequence", return_value=halt):
+        _verify_boot()
+    err = capsys.readouterr().err
+    assert "BOOT HALT [B1]" in err
+    assert "BootEnvironmentError" in err
+    assert "kind=python_version" in err
+
+
+def test_verify_boot_stderr_includes_remediation_hint_for_credentials_missing(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The most realistic current-state halt — credentials_missing at B2."""
+    halt = _halt_boot_result(
+        halt_step="B2",
+        halt_error=BootBibleSyncError(
+            kind="credentials_missing",
+            reason="no [anthropic] api_key",
+        ),
+    )
+    with patch.object(verify_module, "_run_boot_sequence", return_value=halt):
+        rc = _verify_boot()
+    err = capsys.readouterr().err
+    assert rc == 1
+    assert "credentials_missing" in err
+    assert "Hint:" in err
+    assert "~/.cee/credentials.toml" in err
+
+
+def test_verify_boot_stderr_includes_remediation_hint_for_consistency_drift(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """BootConsistencyError uses the (class, None) fallback lookup."""
+    halt = _halt_boot_result(
+        halt_step="B3",
+        halt_error=BootConsistencyError(drifts=[]),
+        completed=("B1", "B2"),
+    )
+    with patch.object(verify_module, "_run_boot_sequence", return_value=halt):
+        rc = _verify_boot()
+    err = capsys.readouterr().err
+    assert rc == 1
+    assert "BootConsistencyError" in err
+    assert "Hint:" in err
+    assert "enum drift" in err.lower()
+
+
+def test_verify_boot_stdout_lists_partial_steps_on_halt(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """On halt at B5, only B1-B5 (with B5 failed) appear in stdout.
+
+    Match against the per-step line pattern (``  <mark> Bx  <label>``)
+    so the literal "B1–B9" in the section header doesn't confuse the
+    substring check.
+    """
+    halt = _halt_boot_result(
+        halt_step="B5",
+        halt_error=BootRegistryError(reason="permission denied", kind="agent"),
+        completed=("B1", "B2", "B3", "B4"),
+    )
+    with patch.object(verify_module, "_run_boot_sequence", return_value=halt):
+        _verify_boot()
+    out = capsys.readouterr().out
+    for step in ("B1", "B2", "B3", "B4"):
+        assert f"✓ {step}" in out, f"missing successful {step} line"
+    assert "✗ B5" in out, "missing failed B5 line"
+    for step in ("B6", "B7", "B8", "B9"):
+        assert f"✓ {step}" not in out
+        assert f"✗ {step}" not in out
+    assert "halted at B5" in out
+
+
+def test_verify_boot_renders_warnings_when_present(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B8 best-effort warnings appear in the report even on ok=True."""
+    result = BootResult(
+        ok=True,
+        steps=tuple(_step(s) for s in (
+            "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9"
+        )),
+        halt_step=None,
+        halt_error=None,
+        warnings=(
+            "B8: promotion_queue.json exists but writer is pending",
+        ),
+        total_duration_ms=80,
+    )
+    with patch.object(verify_module, "_run_boot_sequence", return_value=result):
+        rc = _verify_boot()
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "Warnings (1):" in out
+    assert "promotion_queue.json" in out
+    assert "PASSED." in out
+
+
+def test_verify_boot_unknown_halt_class_falls_back_to_generic_hint() -> None:
+    """A BootError subclass not in the hint table → fallback string."""
+
+    class _UnknownBootError(BootError):
+        def __init__(self) -> None:
+            super().__init__(step="B7", reason="something exotic")
+
+    hint = _hint_for_halt(_UnknownBootError())
+    assert "operator" in hint
+    assert "boot.log" in hint
+
+
+def test_cmd_verify_with_boot_flag_dispatches_to_verify_boot() -> None:
+    """cmd_verify(--boot) calls _verify_boot exactly once."""
+    with patch.object(verify_module, "_verify_boot", return_value=0) as spy:
+        rc = cmd_verify(_ns(layout=False, schemas=False, boot=True))
+    spy.assert_called_once()
+    assert rc == 0
+
+
+def test_cmd_verify_with_boot_and_layout_runs_both_max_exit_code(
+    cee_root: dict[str, Path],
+) -> None:
+    """--boot --layout: both run; exit = max(layout_rc, boot_rc)."""
+    with (
+        patch.object(verify_module, "_verify_layout", return_value=0) as layout_spy,
+        patch.object(verify_module, "_verify_boot", return_value=1) as boot_spy,
+    ):
+        rc = cmd_verify(_ns(layout=True, schemas=False, boot=True))
+    layout_spy.assert_called_once()
+    boot_spy.assert_called_once()
+    assert rc == 1  # max(0, 1)

@@ -191,3 +191,29 @@ def test_main_verify_help_includes_schemas_option(
         main(["verify", "--help"])
     out = capsys.readouterr().out
     assert "--schemas" in out
+
+
+# ─── Phase 2 task 9: --boot flag registration ──────────────────────────
+
+
+def test_main_verify_boot_flag_is_registered() -> None:
+    """``cee verify --boot`` parses without an argparse error."""
+    fake_cmd = MagicMock(return_value=0)
+    with patch.object(main_module, "cmd_verify", fake_cmd):
+        rc = main(["verify", "--boot"])
+    assert rc == 0
+    ns = fake_cmd.call_args.args[0]
+    assert ns.boot is True
+    assert ns.layout is False
+    assert ns.schemas is False
+
+
+def test_main_verify_help_includes_boot_option(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``cee verify --help`` mentions the --boot flag and B1-B9 grounding."""
+    with pytest.raises(SystemExit):
+        main(["verify", "--help"])
+    out = capsys.readouterr().out
+    assert "--boot" in out
+    assert "B1-B9" in out or "boot sequence" in out.lower()
