@@ -319,9 +319,296 @@ Bible reconciliations surfaced during Phase 2 prep (commit `8963612`'s body). Di
 25. **Bible 20 §5.2 line 148 `cee verify --bible` flag canonization.** Bible names the command verbatim. T10 implements as a flag on the existing `verify` subcommand (matches `--layout` / `--schemas` / `--boot` precedent). Closed in T10.
 26. **Bible 20 §5.2 line 152 vs current `cee verify` no-flag behavior.** Bible says "A clean shell can run `cee init` then `cee sync-bible` then `cee verify` without errors" — implies `cee verify` (no flag) should run all registered checks. Current CLI (Phase 1 + T9 + T10) requires explicit flags; no-flag → exit 2 with usage hint. Two resolution paths: (a) bible amendment to canonize `cee verify --all` per bible 20 §5.2 line 367/374 cross-refs, OR (b) implementation change so `cee verify` (no flag) defaults to running every registered check. T11 (Phase 2 gate) will likely invoke `cee verify --layout --schemas --boot --bible` explicitly to satisfy the gate criterion. Long-term resolution deferred. Surface for T11 prep + future bible-edit pass.
 27. **`_BIBLE_DRIFT_HINTS` remediation content belongs in bible alongside `_BOOT_HALT_HINTS`.** T10 ships drift-category-keyed remediation hint table (4 entries: `notion_newer`, `mirror_modified`, `orphan`, `missing_from_meta`) inline as Python constant in `cli/commands/verify.py`. Same rationale as #24 for `_BOOT_HALT_HINTS` — drift-remediation content is canonical operator UX. Long-term, this content should live in bible (likely bible 04 §5.6 or bible 19 §5.6). Defer to: post-T9/T10 bible-edit pass (combined with #24).
+28. **Bible 20 §5.3 lists `~/cee/persistence/audit.py` as a Phase 3 output, but it shipped in Phase 1.** Per Phase 1 close commit history, `persistence/audit.py` (atomic append + hash chain + `verify_audit_chain`) was a Phase 1 deliverable. Phase 3 inherits and uses it but produces no new audit.py work. Resolution: amend bible 20 §5.3 to mark `persistence/audit.py` as Phase 1 carry-over (not a Phase 3 output) and reference Phase 1's actual ship. Surface area: low. Defer to: future bible-edit pass.
+29. **`cee verify --security` Phase 5+ deferral confirmation (cross-ref to Phase 1 carried-forward).** Bible 20 §5.3 names `cee verify --security` (permission checks) as a Phase 3 CLI output. Phase 1's "Carried-forward deferrals" list (line 283) defers `cee verify --security` to Phase 5+ co-deferred with security-event audit work. Phase 3 plan honors that deferral — no `--security` ships in T9/T10/T11. Resolution: amend bible 20 §5.3 to align (move `--security` to Phase 5+ output list) or document the cross-phase split-of-scope. Defer to: future bible-edit pass.
+30. **Phase 3 monolithic vs split-phase decision record.** Bible 20 §5.3 bundles persistence (3 writers + audit) + safety gate (3 stages) + 3 CLI verbs into a single phase. AB resolved Q6 as monolithic — ship all of bible 20 §5.3 in one phase rather than splitting into Phase 3a (persistence) + Phase 3b (safety gate). Rationale: §5.3 gate criterion (d) `tests/integration/test_persistence_chain.py` couples both halves end-to-end; splitting would force a redundant intermediate gate. Resolution: no bible amendment needed; recorded here as the Phase 3 planning decision for future-AB reference. Closed in Phase 3 T1.
 
 ---
 
-## Phase 3+ (placeholder)
+## Phase 3 — Persistence + Substrate Adapters + Safety Gate
 
-To be planned at Phase 2 close, following the same pattern as this Phase 2 section. Per bible 20: Phase 3 (Persistence + Substrate Adapters), Phase 4 (Interpreter + Classifier), Phase 5 (Agents + Skills + Strategy), Phase 6 (Prompt Builder + Output Format + Grounding), Phase 7 (Pipeline Driver + Executor + Claude Code Integration), Phase 8 (Production Verification).
+**Scope:** Implement the three substrate writers (`filesystem_writer`, `obsidian_writer`, `notion_writer`), the three safety-gate stages (`redactor`, `injection_scanner`, `confirmation`), and the Phase 3 CLI surface (`cee verify --obsidian`, `cee audit-verify`, `cee scaffold-obsidian`). Per bible 20 §5.3 — every artifact type can be written to filesystem, mirrored to Obsidian, and queued for Notion promotion; every redaction + injection pattern from bible 12 §5 is enforced.
+
+**Gate:** Phase 3 closes when (a) a test-fixture artifact round-trips through all three substrates (modulo redaction), (b) every bible 12 §5 redaction pattern + injection pattern is covered by passing tests, (c) the audit hash chain detects tampering, (d) `tests/integration/test_persistence_chain.py` passes end-to-end, (e) `pytest tests/unit/test_persistence/ tests/unit/test_safety_gate/` passes.
+
+**Reference:** bible 20 §5.3 (Phase 3 outputs + gate criteria), bible 04 §10 (per-artifact write contract), bible 12 §5 (redaction + injection + confirmation taxonomy), bible 13 §5 (Obsidian vault layout).
+
+**Carried-forward deferrals targeted in Phase 3:** none from Phase 1's list — Phase 3 strictly delivers bible 20 §5.3 outputs. `cee verify --security` stays Phase 5+ (paired with security-event audit work); Obsidian per-type renderers stay Phase 5+ (paired with first artifact production).
+
+**Track structure:**
+
+- **Track A — Persistence** (T2–T5): the three writers + the queue schema they share.
+- **Track B — Safety gate** (T6–T8): redactor → injection scanner → confirmation, in pipeline order per bible 12 §5.
+- **Track C — CLI + integration** (T9–T12): operator-facing verbs + the chain-level integration test fixture.
+- **Track D — Gate** (T13): Phase 3 gate test mirroring Phase 2 Task 11 pattern.
+
+### Tasks
+
+#### Task 1 — Phase 3 task plan (this commit)
+
+**Effort:** S
+**Goal:** Land the Phase 3 task list, scope, and downstream-candidate updates so that subsequent tasks have a canonical reference.
+**Reads:** `bible/20_production_build_plan.md` §5.3 (scope), `build_status.md` Phase 2 task list (pattern reference), Phase 2 close commit `635d003` (gate-passed state baseline).
+**Writes:** `build_status.md` (Phase 3+ placeholder replaced with this section + #28–30 appended to downstream candidates).
+**Bible cross-refs:** bible 20 §5.3.
+**Checklist:**
+- [x] Pre-flight: confirm `git status` clean, baseline test count = 1134 (Phase 2 gate state).
+- [x] Read bible 20 §5.3 verbatim; capture outputs + gate criteria.
+- [x] Mirror Phase 2 task structure (Goal / Reads / Writes / Bible cross-refs / Checklist / Verification per task).
+- [x] Append three new downstream candidates (#28 audit.py shipped-in-Phase-1 note, #29 `--security` Phase 5+ confirmation, #30 monolithic vs split-phase decision record).
+- [x] Commit: "Phase 3 task 1: task plan + scope + Track A/B/C/D structure."
+
+**Verification:** `git diff HEAD~0 -- build_status.md` shows Phase 3 plan replacing the placeholder; downstream candidates renumbered through #30.
+
+---
+
+#### Task 2 — `PromotionQueueEntry` Pydantic schema
+
+**Effort:** S
+**Goal:** Implement the Pydantic model for entries in `~/cee/state/promotion_queue.json` (drained by boot step B8 per bible 00 §12, written by Task 5 `notion_writer`). Shared shape for Phase 3's notion_writer + Phase 5+ promotion-handling work.
+**Reads:** `bible/04_database_file_structure.md` §6.x (state directory layout), `bible/00_project_vision.md` §12 B8 (drain semantics + entry shape implications), `boot/sequencer.py` (T8 of Phase 2 — current B8 stub references `paths.PROMOTION_QUEUE`), `schemas/sync_meta.py` (Phase 2 T1 — pattern reference for state-shape Pydantic models).
+**Writes:** `schemas/promotion_queue_entry.py`, `schemas/__init__.py` (export added), `tests/unit/test_schemas/test_promotion_queue_entry.py`.
+**Bible cross-refs:** bible 00 §12 B8 (drain spec), bible 04 §6.x (state file location), bible 02 §7.x (writer role authorization).
+**Checklist:**
+- [ ] Create `schemas/promotion_queue_entry.py` with `PromotionQueueEntry` model. `ConfigDict(extra="forbid", ...)`. `SCHEMA_VERSION: ClassVar[str] = "1.0.0"`. `produced_by: RoleEnum = RoleEnum.NOTION_WRITER`.
+- [ ] Required fields (inferred from bible 00 §12 B8): `artifact_type` (closed enum: `run | skill | agent | bible_section | audit_summary`), `local_path` (relative to `~/cee/`), `enqueued_at` (ISO8601), `attempt_count` (int, default 0), `last_attempt_at` (ISO8601 | None), `last_error` (str | None).
+- [ ] Add `PromotionQueueEntry` import + `__all__` entry in `schemas/__init__.py`.
+- [ ] Write tests: round-trip serialization, `extra="forbid"` rejection, closed-enum rejection of unknown `artifact_type`, ISO timestamp validation.
+- [ ] Confirm `cee verify --schemas` walks 17 schemas (16 from Phase 2 + `PromotionQueueEntry`).
+- [ ] Surface as a downstream candidate if bible 04 §6.x doesn't enumerate the entry shape — Phase 3 ratifies.
+- [ ] Commit: "Phase 3 task 2: PromotionQueueEntry schema + verify --schemas walks 17."
+
+**Verification:** `pytest tests/unit/test_schemas/test_promotion_queue_entry.py` passes; `cee verify --schemas` exits 0 reporting 17 schemas.
+
+---
+
+#### Task 3 — `persistence/filesystem_writer.py`
+
+**Effort:** L
+**Goal:** Implement the role-aware filesystem writer per bible 04 §10 + bible 12 §5.10 hash-and-skip semantics. Writes go to `~/cee/runs/<run_id>/`, `~/cee/skills/<slug>/`, `~/cee/agents/<slug>.md`, `~/cee/bible_sections/` (per artifact type). Atomic via `persistence/atomic.py` (Phase 1).
+**Reads:** `bible/04_database_file_structure.md` §10 (per-artifact write contract — primary), §5.10 (hash-and-skip), §6.x (run dir layout), `bible/12_prompt_leak_security_rules.md` §5.10 (idempotent-write invariant), `bible/02_user_roles.md` §7.x (FILESYSTEM_WRITER role authorization), `persistence/atomic.py` (Phase 1 — `atomic_write_text` / `atomic_write_json`), `persistence/audit.py` (Phase 1 — for emitting write events).
+**Writes:** `persistence/filesystem_writer.py`, `tests/unit/test_persistence/test_filesystem_writer.py`.
+**Bible cross-refs:** bible 04 §10, bible 04 §5.10, bible 12 §5.10, bible 02 §7.x.
+**Checklist:**
+- [ ] Create `persistence/filesystem_writer.py` exporting `write(artifact: BaseModel, *, run_id: str | None = None) -> WriteResult`. Dispatches on artifact type.
+- [ ] Per-artifact path resolution: Run artifacts → `paths.RUNS_DIR / run_id / <artifact_name>.json`; Skill → `paths.SKILLS_DIR / slug / SKILL.md`; Agent → `paths.AGENTS_DIR / slug.md`; etc. Path resolution is data-driven from artifact type.
+- [ ] Strict §5.10 hash-and-skip per Phase 1's deferral note: stub for Phase 3, full implementation deferred per existing carried-forward item. Phase 3 ships unconditional atomic write.
+- [ ] Audit emission: every write emits a `filesystem_write` entry to `roles.log` (or per-Run audit log if `run_id` provided) via `persistence/audit.py`.
+- [ ] Halt taxonomy: `FilesystemWriteError(kind="permission_denied" | "disk_full" | "path_outside_root")` — never overwrites outside `~/cee/`.
+- [ ] Unit tests: per-artifact-type path resolution, atomic-write invariant (partial-write doesn't expose), audit emission shape, error kinds, refusal to write outside `~/cee/`.
+- [ ] Commit: "Phase 3 task 3: persistence/filesystem_writer.py — role-aware atomic writes."
+
+**Verification:** `pytest tests/unit/test_persistence/test_filesystem_writer.py` passes; `python -c "from persistence.filesystem_writer import write"` succeeds.
+
+---
+
+#### Task 4 — `persistence/obsidian_writer.py` (rename + extend)
+
+**Effort:** M
+**Goal:** Rename existing Phase 1 scaffold `persistence/obsidian.py` → `persistence/obsidian_writer.py` (per bible 20 §5.3 naming) and extend with the per-artifact dispatch shell. Per-type renderer bodies stay deferred per Phase 1 carried-forward; Phase 3 ships the dispatch + idempotent-write infrastructure.
+**Reads:** `bible/20_production_build_plan.md` §5.3 (canonical name `obsidian_writer.py`), `bible/13_obsidian_vault_structure.md` §5 (vault layout + per-artifact target paths), `bible/04_database_file_structure.md` §10.10 (Obsidian-rebuild downstream relationship), `persistence/obsidian.py` (Phase 1 scaffold being renamed), `bible/12_prompt_leak_security_rules.md` §5.10 (idempotent-write invariant — applies to Obsidian too).
+**Writes:** `persistence/obsidian_writer.py` (renamed + extended), `persistence/__init__.py` (export updated), `tests/unit/test_persistence/test_obsidian_writer.py` (renamed if exists), `git mv` for the rename.
+**Bible cross-refs:** bible 20 §5.3, bible 13 §5, bible 04 §10.10, bible 12 §5.10.
+**Checklist:**
+- [ ] `git mv persistence/obsidian.py persistence/obsidian_writer.py`. Update import sites (likely zero since Phase 1 only scaffolded).
+- [ ] Update `persistence/__init__.py` re-exports.
+- [ ] Add `write(artifact: BaseModel) -> WriteResult` dispatch shell. Per-type renderer bodies raise `NotImplementedError("deferred per Phase 1 carried-forward")` for Phase 3.
+- [ ] Per-type target-path resolution data-driven from artifact type, mapping to bible 13 §5 vault layout.
+- [ ] Audit emission: every write emits an `obsidian_write` entry to `roles.log` via `persistence/audit.py`.
+- [ ] Halt taxonomy: `ObsidianWriteError(kind="vault_not_found" | "permission_denied" | "renderer_not_implemented")`.
+- [ ] Unit tests: rename verified (old import path errors), per-type path resolution returns the right target, `renderer_not_implemented` for each unrendered type, vault-missing halt.
+- [ ] Commit: "Phase 3 task 4: persistence/obsidian_writer.py — rename + dispatch shell."
+
+**Verification:** `pytest tests/unit/test_persistence/test_obsidian_writer.py` passes; `python -c "from persistence.obsidian_writer import write"` succeeds; old `persistence/obsidian` import path errors.
+
+---
+
+#### Task 5 — `persistence/notion_writer.py` (queue mechanics)
+
+**Effort:** L
+**Goal:** Implement the promotion-queue mechanics: enqueue artifacts to `~/cee/state/promotion_queue.json` for later drain by boot step B8. Concrete Notion MCP write transport is deferred (parallels bible 04 §5.6 deferral pattern from Phase 2 — concrete transport is post-Phase-3).
+**Reads:** `bible/00_project_vision.md` §12 B8 (drain spec — primary), `bible/04_database_file_structure.md` §6.x (state file location), `schemas/promotion_queue_entry.py` (Task 2), `persistence/atomic.py` (Phase 1 — `atomic_write_json`), `boot/sequencer.py` (T8 of Phase 2 — current B8 best-effort stub), `bible/02_user_roles.md` §7.x (NOTION_WRITER role).
+**Writes:** `persistence/notion_writer.py`, `tests/unit/test_persistence/test_notion_writer.py`.
+**Bible cross-refs:** bible 00 §12 B8, bible 04 §6.x, bible 02 §7.x.
+**Checklist:**
+- [ ] Create `persistence/notion_writer.py` exporting `enqueue(artifact: BaseModel) -> EnqueueResult` and `drain(*, dry_run: bool = False) -> DrainResult`.
+- [ ] `enqueue()`: read current queue (atomic), append `PromotionQueueEntry`, atomic-write back. Idempotent: re-enqueueing the same `local_path` updates `attempt_count` rather than appending duplicate.
+- [ ] `drain()`: load queue, attempt to write each to Notion via `_write_to_notion(entry)`. Phase 3: `_write_to_notion` raises `NotImplementedError("concrete Notion MCP transport deferred")`. With `dry_run=True`, returns the queue contents without attempting any writes.
+- [ ] B8 callable surface: `boot.sequencer._B8_drain_promotion_queue` should call `notion_writer.drain(dry_run=False)` and treat `NotImplementedError` as a graceful no-op (matches Phase 2 T8's best-effort B8 contract).
+- [ ] Audit emission: enqueue emits `promotion_enqueued`; drain attempts emit `promotion_drain_attempt` (success or failure).
+- [ ] Halt taxonomy: `NotionWriteError(kind="queue_corrupted" | "transport_not_implemented")` — both surface but only `queue_corrupted` halts B8.
+- [ ] Unit tests: enqueue idempotency, queue round-trip, dry-run drain returns queue without writes, `NotImplementedError` graceful in drain, queue-corruption halt.
+- [ ] Surface as downstream candidate: concrete Notion MCP transport ships post-Phase-3 (parallels bible 04 §5.6 deferral pattern).
+- [ ] Commit: "Phase 3 task 5: persistence/notion_writer.py — queue mechanics (concrete transport deferred)."
+
+**Verification:** `pytest tests/unit/test_persistence/test_notion_writer.py` passes; `boot/sequencer.py` B8 still passes (graceful drain).
+
+---
+
+#### Task 6 — `safety_gate/redactor.py`
+
+**Effort:** L
+**Goal:** Implement the redactor per bible 12 §5 — applies built-in redaction patterns + per-user redact_list. Pipeline-stage 1 of the safety gate. Outputs are redacted-in-place (string transform) before injection scanner runs.
+**Reads:** `bible/12_prompt_leak_security_rules.md` §5 (redaction patterns + redact_list semantics — primary), `bible/12_prompt_leak_security_rules.md` §5.x (audit-emission contract for redactions), `bible/02_user_roles.md` §7.x (REDACTOR role), `safety_gate/__init__.py` (Phase 1 stub).
+**Writes:** `safety_gate/redactor.py`, `tests/unit/test_safety_gate/test_redactor.py`.
+**Bible cross-refs:** bible 12 §5 (full redaction taxonomy).
+**Checklist:**
+- [ ] Create `safety_gate/redactor.py` exporting `redact(text: str, *, user_redact_list: list[str] | None = None) -> RedactionResult`. `RedactionResult` carries the redacted text + per-pattern hit counts.
+- [ ] Built-in patterns from bible 12 §5: API keys (sk-ant-, sk-, ghp_, etc.), email addresses, file paths under `/Users/`, IP addresses, JWT tokens, AWS access keys, etc. — enumerate every pattern bible 12 §5 names.
+- [ ] User `redact_list`: literal-string list per `~/.cee/config.toml` `[redaction]` section. Applied after built-ins.
+- [ ] Replacement format: `[REDACTED:<pattern_name>]` — deterministic so audit logs are diffable.
+- [ ] Audit emission: every `redact()` call emits a `redaction_applied` entry to `roles.log` (via `persistence/audit.py`) with per-pattern hit counts.
+- [ ] Halt taxonomy: redactor never halts on its own — silent-failure-allergic, every miss is a defect found via test, not a runtime error.
+- [ ] Unit tests: one test per built-in pattern (every bible 12 §5 pattern), user-redact_list applied, replacement format invariant, hit-count accuracy, no-redaction-needed passthrough, audit emission shape.
+- [ ] Commit: "Phase 3 task 6: safety_gate/redactor.py — bible 12 §5 patterns + user redact_list."
+
+**Verification:** `pytest tests/unit/test_safety_gate/test_redactor.py` passes; bible 12 §5 enumerated patterns each have a passing test.
+
+---
+
+#### Task 7 — `safety_gate/injection_scanner.py`
+
+**Effort:** L
+**Goal:** Implement the injection scanner per bible 12 §5 — detects prompt-injection patterns in `RawInput` (per bible 12 §5.5, runs before the interpreter). Pipeline-stage 2 of the safety gate. Halts pipeline on detection; never silently suppresses.
+**Reads:** `bible/12_prompt_leak_security_rules.md` §5 (injection patterns — primary), §5.5 (pre-interpreter ordering), `bible/03_raw_input.md` (RawInput shape being scanned), `bible/02_user_roles.md` §7.x (INJECTION_SCANNER role), `schemas/raw_input.py` (input target).
+**Writes:** `safety_gate/injection_scanner.py`, `tests/unit/test_safety_gate/test_injection_scanner.py`.
+**Bible cross-refs:** bible 12 §5, bible 12 §5.5, bible 03.
+**Checklist:**
+- [ ] Create `safety_gate/injection_scanner.py` exporting `scan(raw_input: RawInput) -> ScanResult`. `ScanResult` carries `clean: bool` + per-pattern hit list.
+- [ ] Built-in patterns from bible 12 §5: "ignore previous instructions" variants, role-injection ("you are now"), system-prompt-leak attempts, tool-call-fabrication patterns, etc. — enumerate every pattern bible 12 §5 names.
+- [ ] Halt taxonomy: `InjectionDetectedError(patterns: list[str])` — raised by `scan()` on any hit (never returns hits silently). Per bible 12 §5.5 the pipeline must halt before interpreter.
+- [ ] Audit emission: `scan()` emits `injection_scan_complete` (clean) or `injection_scan_halted` (hit) to `roles.log`.
+- [ ] Unit tests: one test per built-in pattern (every bible 12 §5 pattern), clean-input passthrough, halt on first hit, audit emission shape, multi-pattern detection.
+- [ ] Commit: "Phase 3 task 7: safety_gate/injection_scanner.py — bible 12 §5 patterns."
+
+**Verification:** `pytest tests/unit/test_safety_gate/test_injection_scanner.py` passes; bible 12 §5 enumerated injection patterns each have a passing test.
+
+---
+
+#### Task 8 — `safety_gate/confirmation.py`
+
+**Effort:** M
+**Goal:** Implement the destructive-operation confirmation gate per bible 12 §5 — interrupts pipeline before destructive writes/deletes/external sends, requires explicit operator confirmation. Pipeline-stage 3 of the safety gate.
+**Reads:** `bible/12_prompt_leak_security_rules.md` §5 (confirmation taxonomy — what counts as destructive), `bible/02_user_roles.md` §7.x (CONFIRMATION_GATE role), `safety_gate/redactor.py` (T6 — pattern reference for safety_gate module shape).
+**Writes:** `safety_gate/confirmation.py`, `tests/unit/test_safety_gate/test_confirmation.py`.
+**Bible cross-refs:** bible 12 §5.
+**Checklist:**
+- [ ] Create `safety_gate/confirmation.py` exporting `confirm(action: DestructiveAction, *, prompt_fn: Callable[[str], str] = input) -> ConfirmationResult`. `prompt_fn` injectable for testing.
+- [ ] `DestructiveAction` closed enum (frozen dataclass) per bible 12 §5: `delete_file | overwrite_existing | external_send | rm_rf | etc.` — enumerate every category bible 12 §5 names.
+- [ ] Confirmation prompt format: structured CLI prompt naming the action, target path/recipient, and reversibility. Operator must type the literal target name to confirm (per bible 12 §5 "exact-match confirmation").
+- [ ] Halt taxonomy: `ConfirmationDeclinedError(action, target)` — raised on operator decline. Pipeline must halt; never proceed on a "no" or empty answer.
+- [ ] Audit emission: `confirmation_requested` (always), `confirmation_granted` (on yes), `confirmation_declined` (on no/empty) to `roles.log`.
+- [ ] Unit tests: per-action-type prompt format, exact-match enforcement (typo → declined), audit emission shape (all three event types), declined-by-default invariant.
+- [ ] Commit: "Phase 3 task 8: safety_gate/confirmation.py — destructive-operation gate."
+
+**Verification:** `pytest tests/unit/test_safety_gate/test_confirmation.py` passes.
+
+---
+
+#### Task 9 — `cee verify --obsidian` subcommand
+
+**Effort:** M
+**Goal:** Add `cee verify --obsidian` per bible 20 §5.3 — read-only verification of `~/SecondBrain/cee/` vault structure against bible 13 §5 layout. No writes, no scaffolding (that's Task 11).
+**Reads:** `bible/20_production_build_plan.md` §5.3 (CLI surface), `bible/13_obsidian_vault_structure.md` §5 (canonical layout), `cli/commands/verify.py` (Phase 2 pattern — `--layout` / `--schemas` / `--boot` / `--bible`), `persistence/obsidian_writer.py` (Task 4).
+**Writes:** `cli/commands/verify.py` (extended with `_verify_obsidian()` + `--obsidian` flag), `cli/main.py` (flag registration), `tests/unit/test_cli/test_verify_command.py` (extended), `tests/unit/test_cli/test_main.py` (extended).
+**Bible cross-refs:** bible 20 §5.3, bible 13 §5.
+**Checklist:**
+- [ ] Extend `cli/commands/verify.py` with `_verify_obsidian()` mirroring T9/T10 Phase 2 patterns (test seam + hint table).
+- [ ] Per-directory existence checks against bible 13 §5 layout: `_runs/`, `_skills/`, `_agents/`, `_bible/`, `_audit/`, `_templates/`. Report missing as `MISSING`, present as `OK`.
+- [ ] No-write invariant: this verb never creates or modifies vault paths. Use Task 11 (`cee scaffold-obsidian`) for that.
+- [ ] Hint table `_OBSIDIAN_VERIFY_HINTS` keyed by missing-dir name → suggested remediation (e.g., "run `cee scaffold-obsidian` to create").
+- [ ] Register `--obsidian` flag in `cli/main.py` `verify_parser` with help text citing bible 13 §5 + bible 20 §5.3.
+- [ ] Tests (`test_verify_command.py`): all-present → exit 0, missing-dir → exit non-zero with hint, vault-missing → halt with explicit instruction. Tests (`test_main.py`): flag registration + help-text presence.
+- [ ] Commit: "Phase 3 task 9: cee verify --obsidian — vault-layout verification."
+
+**Verification:** `pytest tests/unit/test_cli/test_verify_command.py tests/unit/test_cli/test_main.py` passes; `cee verify --obsidian --help` shows the flag.
+
+---
+
+#### Task 10 — `cee audit-verify` subcommand
+
+**Effort:** M
+**Goal:** Add `cee audit-verify` per bible 20 §5.3 — verifies the hash chain of every audit log under `~/SecondBrain/cee/_audit/`. Detects tampering or corruption. Bible 12 §5.x defines the chain format; Phase 1 shipped `persistence/audit.py:verify_audit_chain()` which this verb wraps.
+**Reads:** `bible/20_production_build_plan.md` §5.3 (CLI surface), `bible/12_prompt_leak_security_rules.md` §5.x (hash-chain spec), `persistence/audit.py` (Phase 1 — `verify_audit_chain()` is the load-bearing call), `cli/commands/verify.py` (Phase 2 pattern reference).
+**Writes:** `cli/commands/audit_verify.py`, `cli/main.py` (subcommand registration), `tests/unit/test_cli/test_audit_verify.py`, `tests/unit/test_cli/test_main.py` (extended).
+**Bible cross-refs:** bible 20 §5.3, bible 12 §5.x.
+**Checklist:**
+- [ ] Create `cli/commands/audit_verify.py` exporting `cmd_audit_verify(args) -> int`. New subcommand (not a flag on `verify` — bible 20 §5.3 names it as a separate verb).
+- [ ] Walk `paths.AUDIT_DIR` for every `*.log` (cli.log, boot.log, roles.log + per-Run audit logs). For each, call `persistence.audit.verify_audit_chain(path)`. Aggregate results.
+- [ ] Per-log report: `OK` (chain intact, line count) or `BROKEN` (broken-entry line numbers + tamper detail).
+- [ ] Exit code: 0 if every log OK; 1 if any chain broken.
+- [ ] Hint table for broken-chain remediation: which file, which line, what to inspect (audit logs are append-only — broken chain implies external tampering).
+- [ ] Register `audit-verify` subparser in `cli/main.py` (mirrors `init` / `verify` / `sync-bible` registration pattern).
+- [ ] Tests (`test_audit_verify.py`): all-clean → exit 0, planted broken chain → exit 1 with broken-line report, no audit logs (fresh state) → exit 0 with "no logs found" note.
+- [ ] Commit: "Phase 3 task 10: cee audit-verify — hash-chain verification."
+
+**Verification:** `pytest tests/unit/test_cli/test_audit_verify.py tests/unit/test_cli/test_main.py` passes; `cee audit-verify --help` shows the subcommand.
+
+---
+
+#### Task 11 — `cee scaffold-obsidian` subcommand
+
+**Effort:** M
+**Goal:** Add `cee scaffold-obsidian` per bible 20 §5.3 — creates the `~/SecondBrain/cee/` vault directory tree per bible 13 §5 layout. Idempotent (re-runnable). Operator-facing complement to `cee verify --obsidian`.
+**Reads:** `bible/20_production_build_plan.md` §5.3 (CLI surface), `bible/13_obsidian_vault_structure.md` §5 (canonical layout), `cli/commands/init.py` (Phase 1 pattern reference for directory-creation idempotency).
+**Writes:** `cli/commands/scaffold_obsidian.py`, `cli/main.py` (subcommand registration), `tests/unit/test_cli/test_scaffold_obsidian.py`, `tests/unit/test_cli/test_main.py` (extended).
+**Bible cross-refs:** bible 20 §5.3, bible 13 §5.
+**Checklist:**
+- [ ] Create `cli/commands/scaffold_obsidian.py` exporting `cmd_scaffold_obsidian(args) -> int`.
+- [ ] Per-directory `mkdir(parents=True, exist_ok=True)` for every bible 13 §5 vault subdir. Report each as `CREATED` (new) or `EXISTS` (idempotent).
+- [ ] No `_templates/` content writes — that's Phase 5+ (existing carried-forward deferral).
+- [ ] Audit emission: emit `scaffold_obsidian` entry to `cli.log` (subcommand was invoked) + per-dir `obsidian_dir_created` entries to `roles.log` for genuinely new dirs.
+- [ ] Halt taxonomy: `ObsidianScaffoldError(kind="parent_not_writable" | "permission_denied")`.
+- [ ] Exit code: 0 on success (created or already-exists); non-zero on halt.
+- [ ] Register `scaffold-obsidian` subparser in `cli/main.py`.
+- [ ] Tests: fresh-state → all CREATED, idempotent re-run → all EXISTS, parent-not-writable → halt, audit shape per scenario.
+- [ ] Commit: "Phase 3 task 11: cee scaffold-obsidian — idempotent vault tree creation."
+
+**Verification:** `pytest tests/unit/test_cli/test_scaffold_obsidian.py tests/unit/test_cli/test_main.py` passes; `cee scaffold-obsidian` creates the vault tree against fresh state.
+
+---
+
+#### Task 12 — `tests/integration/test_persistence_chain.py`
+
+**Effort:** L
+**Goal:** Build the integration-level fixture proving a single test artifact round-trips through all three substrates per bible 20 §5.3 gate criterion (a). Uses real `persistence/atomic.py`, `persistence/audit.py`, `persistence/filesystem_writer.py` (T3), `persistence/obsidian_writer.py` (T4 — dispatch shell only, renderers stay deferred), `persistence/notion_writer.py` (T5 — enqueue path only, transport stays deferred).
+**Reads:** `bible/20_production_build_plan.md` §5.3 gate criterion (a), `bible/04_database_file_structure.md` §10 (per-artifact write contract), `tests/integration/test_phase2_gate.py` (Phase 2 T11 — pattern reference for integration-fixture style), `persistence/*.py` (Tasks 3–5).
+**Writes:** `tests/integration/test_persistence_chain.py`.
+**Bible cross-refs:** bible 20 §5.3 gate (a), bible 04 §10.
+**Checklist:**
+- [ ] Build `chain_env` fixture mirroring Phase 2 T11's `gate_env` pattern: monkeypatches `paths.HOME_DIR`, `paths.OBSIDIAN_VAULT_DIR`, etc. to a tmpdir-based isolated install. Calls `cee scaffold-obsidian` (T11) to set up vault.
+- [ ] Test artifact: a fixture-grade `RawInput` instance (chosen because Phase 1 schema is stable + simple).
+- [ ] Round-trip: `filesystem_writer.write(artifact)` → file exists at expected path with matching content; `obsidian_writer.write(artifact)` → expects the dispatch shell's `NotImplementedError("renderer deferred")` (asserted as expected for Phase 3); `notion_writer.enqueue(artifact)` → entry appears in `promotion_queue.json`.
+- [ ] Audit chain: assert exactly one `filesystem_write` + one `promotion_enqueued` event in `roles.log` after the round-trip.
+- [ ] Hash chain integrity: call `persistence.audit.verify_audit_chain(roles.log path)` → `(True, [])`.
+- [ ] Tamper detection: planted-tamper test (modify a roles.log line, re-verify, expect broken-entry list).
+- [ ] Commit: "Phase 3 task 12: persistence-chain integration fixture."
+
+**Verification:** `pytest tests/integration/test_persistence_chain.py` passes.
+
+---
+
+#### Task 13 — Phase 3 gate
+
+**Effort:** M
+**Goal:** Confirm Phase 3 is complete per bible 20 §5.3 gate criteria. Mirrors Phase 2 Task 11 pattern. Drives a clean-state run through every Phase 3 surface and asserts the five gate criteria.
+**Reads:** `bible/20_production_build_plan.md` §5.3 gate (a)–(e) — load-bearing, `build_status.md` (this file), all Tasks 1–12 outputs, `tests/integration/test_phase2_gate.py` (Phase 2 T11 — pattern reference).
+**Writes:** `tests/integration/test_phase3_gate.py`, `build_status.md` (Phase 3 marked shipped with gate-passed timestamp + final test count + gate commit hash).
+**Bible cross-refs:** bible 20 §5.3 (gate criteria), `tests/integration/test_phase2_gate.py` (Phase 2 pattern).
+**Checklist:**
+- [ ] `test_persistence_chain_artifact_roundtrip` — invokes T12's chain fixture, asserts gate criterion (a).
+- [ ] `test_redaction_patterns_all_covered` — gate criterion (b1): asserts every bible 12 §5 redaction pattern has at least one passing test (introspect test output or pattern → test mapping).
+- [ ] `test_injection_patterns_all_covered` — gate criterion (b2): asserts every bible 12 §5 injection pattern has at least one passing test.
+- [ ] `test_audit_chain_detects_tampering` — gate criterion (c): plants a tamper, asserts `verify_audit_chain` reports broken.
+- [ ] `test_persistence_unit_suite_passes` — gate criterion (d/e): subprocess-runs `pytest tests/unit/test_persistence/ tests/unit/test_safety_gate/` and asserts exit 0.
+- [ ] Update `build_status.md`: Phase 3 status to "shipped" with gate-passed date + final test count + gate commit hash. Move any deferrals discovered during Phase 3 work into the carried-forward list with reasoning.
+- [ ] Trigger downstream-candidate back-port pass (any §5.3 deferred items + bible reconciliations surfaced during T2–T12).
+- [ ] Commit: "Phase 3 complete — gate passed."
+
+**Verification:** Phase 3 gate per bible 20 §5.3 is satisfied: `pytest tests/integration/test_phase3_gate.py` passes; full test suite passes; gate criteria (a)–(e) all green.
+
+---
+
+## Phase 4+ (placeholder)
+
+To be planned at Phase 3 close, following the same pattern as Phase 2 + Phase 3. Per bible 20: Phase 4 (Interpreter + Classifier), Phase 5 (Agents + Skills + Strategy), Phase 6 (Prompt Builder + Output Format + Grounding), Phase 7 (Pipeline Driver + Executor + Claude Code Integration), Phase 8 (Production Verification).
