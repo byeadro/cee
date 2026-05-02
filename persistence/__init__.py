@@ -14,6 +14,16 @@ Public surface (Phase 1):
   :func:`verify_audit_chain` — hash-chained audit log infrastructure
   per bible 12 §5.8 + §10.6. Phase 1 ships the primitives; per-event
   writers are Phase 5+.
+
+Public surface (Phase 3):
+
+- :func:`filesystem_write_text` / :func:`filesystem_write_json` —
+  role-aware atomic writes per bible 02 §7 + bible 20 §5.3. The
+  ``filesystem_*`` namespace is deliberate: callers should use these
+  for any *role-authoritative* write, while ``atomic_*`` remains
+  available as the lower-level primitive for cases where role
+  enforcement is intentionally bypassed (e.g., audit-log appends,
+  which carry their own actor field).
 """
 
 from __future__ import annotations
@@ -24,12 +34,16 @@ from persistence.audit import (
     scaffold_audit_logs,
     verify_audit_chain,
 )
+from persistence.filesystem_writer import write_json as filesystem_write_json
+from persistence.filesystem_writer import write_text as filesystem_write_text
 from persistence.obsidian import scaffold_obsidian
 
 __all__ = [
     "atomic_write_json",
     "atomic_write_text",
     "audit_log_append",
+    "filesystem_write_json",
+    "filesystem_write_text",
     "scaffold_audit_logs",
     "scaffold_obsidian",
     "verify_audit_chain",
