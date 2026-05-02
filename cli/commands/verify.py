@@ -53,9 +53,12 @@ Bible mapping (schemas):
 * **11 §6.2** — adds ``FormatDeclaration`` to the canonical set.
 * **04 §5.5** — adds ``SyncMeta`` (Phase 2 task 1, gap 2 deferral closed).
 * **04 §5.2** — adds ``Credentials`` (Phase 2 task 2, gap 8 deferral closed).
+* **00 §12 B8 + 04 §6.x** — adds ``PromotionQueue`` (Phase 3 task 2,
+  closes downstream candidate #21; bible canonical entry shape ratified
+  by this schema, tracked as downstream candidate #31).
 * **21 §5.2 task 15** — operational build notes for this command.
 
-The reconciled count is **16 schemas**, split five ways for reporting:
+The reconciled count is **17 schemas**, split six ways for reporting:
 
 * **Pipeline artifacts (10)** — produced/consumed by the pipeline at
   runtime. Each declares ``produced_by: RoleEnum``.
@@ -66,6 +69,9 @@ The reconciled count is **16 schemas**, split five ways for reporting:
   declares ``produced_by: RoleEnum.BOOT_SEQUENCER`` (bible 04 §5.5).
 * **User config (1)** — ``Credentials`` for ``~/.cee/credentials.toml``;
   user-managed, no ``produced_by`` (bible 04 §5.2).
+* **Promotion queue (1)** — ``PromotionQueue`` for
+  ``~/cee/promotion_queue.json``; declares ``produced_by:
+  RoleEnum.NOTION_WRITER`` (bible 02 §7.11 + bible 00 §12 B8).
 
 The 23-path layout canonical set:
 
@@ -247,6 +253,7 @@ SCHEMA_MANIFEST: tuple[tuple[str, str, bool, str], ...] = (
     ("schemas.format_declaration", "FormatDeclaration", False, "declaration"),
     ("schemas.sync_meta", "SyncMeta", True, "bible_sync"),
     ("schemas.credentials", "Credentials", False, "user_config"),
+    ("schemas.promotion_queue", "PromotionQueue", True, "queue"),
 )
 
 _CATEGORY_HEADINGS: tuple[tuple[str, str], ...] = (
@@ -255,6 +262,7 @@ _CATEGORY_HEADINGS: tuple[tuple[str, str], ...] = (
     ("declaration", "Declaration schemas"),
     ("bible_sync", "Bible sync state schemas"),
     ("user_config", "User config schemas"),
+    ("queue", "Promotion queue schemas"),
 )
 
 # Pad the class-name column to one space past the longest name in the

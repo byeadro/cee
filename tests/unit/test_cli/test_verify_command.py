@@ -433,23 +433,24 @@ def test_render_item_missing_uses_x_mark_and_label(tmp_path: Path) -> None:
 
 
 def test_verify_schemas_returns_zero_when_all_valid() -> None:
-    """The 16 real schemas on disk must all validate cleanly."""
+    """The 17 real schemas on disk must all validate cleanly."""
     assert _verify_schemas() == 0
 
 
-def test_verify_schemas_walks_all_16_schemas(
+def test_verify_schemas_walks_all_17_schemas(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Bible 04 §6.1 + 04 §5.5 + 04 §5.2 + 10 §6.3 + 11 §6.2 → 16 schemas total."""
+    """Bible 04 §6.1 + 04 §5.5 + 04 §5.2 + 10 §6.3 + 11 §6.2 + Phase 3
+    T2 (PromotionQueue) → 17 schemas total."""
     _verify_schemas()
     out = capsys.readouterr().out
-    assert "16 of 16" in out
+    assert "17 of 17" in out
 
 
-def test_verify_schemas_categorizes_pipeline_vs_frontmatter_vs_declaration_vs_bible_sync_vs_user_config(
+def test_verify_schemas_categorizes_pipeline_vs_frontmatter_vs_declaration_vs_bible_sync_vs_user_config_vs_queue(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """All five category headings appear with correct counts."""
+    """All six category headings appear with correct counts."""
     _verify_schemas()
     out = capsys.readouterr().out
     assert "Pipeline artifact schemas (10):" in out
@@ -457,12 +458,13 @@ def test_verify_schemas_categorizes_pipeline_vs_frontmatter_vs_declaration_vs_bi
     assert "Declaration schemas (2):" in out
     assert "Bible sync state schemas (1):" in out
     assert "User config schemas (1):" in out
+    assert "Promotion queue schemas (1):" in out
 
 
 def test_verify_schemas_summary_format(capsys: pytest.CaptureFixture[str]) -> None:
     _verify_schemas()
     out = capsys.readouterr().out
-    assert "Summary: 16 of 16 schemas valid." in out
+    assert "Summary: 17 of 17 schemas valid." in out
 
 
 def test_verify_schemas_passed_message(
@@ -505,8 +507,8 @@ def test_verify_schemas_lists_class_name_for_each_schema(
 # ─── Schema verifier — manifest invariants ─────────────────────────────
 
 
-def test_schema_manifest_count_is_16() -> None:
-    assert len(SCHEMA_MANIFEST) == 16
+def test_schema_manifest_count_is_17() -> None:
+    assert len(SCHEMA_MANIFEST) == 17
 
 
 def test_schema_manifest_pipeline_count_is_10() -> None:

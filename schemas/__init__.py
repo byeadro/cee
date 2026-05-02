@@ -85,6 +85,12 @@ from schemas.final_prompt import (
 from schemas.format_declaration import FormatDeclaration
 from schemas.grounding_declaration import GroundingDeclaration, Source
 from schemas.intent_object import IntentObject
+from schemas.promotion_queue import (
+    PromotionKind,
+    PromotionQueue,
+    PromotionQueueEntry,
+    PromotionStatus,
+)
 from schemas.raw_input import Attachment, RawInput
 # Aliased to avoid colliding with cee.errors.RunError (the exception class).
 # The schema models the on-disk ``error.json`` artifact (bible 03 §7.3 /
@@ -117,6 +123,11 @@ __all__ = [
     "SyncMeta",
     # Phase 2 — user credentials (gap 8 deferral; bible 04 §5.2)
     "Credentials",
+    # Phase 3 — promotion queue (closes downstream candidate #21)
+    "PromotionQueue",
+    "PromotionQueueEntry",
+    "PromotionKind",
+    "PromotionStatus",
     # User configuration — task 10 (bible 04 §5.2)
     "Config",
     "GeneralConfig",
