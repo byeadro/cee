@@ -39,7 +39,7 @@ from cli.commands.verify import (
     cmd_verify,
 )
 from persistence.audit import scaffold_audit_logs
-from persistence.obsidian import scaffold_obsidian
+from persistence.obsidian_writer import scaffold_obsidian
 from roles import RoleEnum
 
 

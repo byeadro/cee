@@ -24,6 +24,17 @@ Public surface (Phase 3):
   available as the lower-level primitive for cases where role
   enforcement is intentionally bypassed (e.g., audit-log appends,
   which carry their own actor field).
+- :func:`write_artifact` — Obsidian per-artifact write plumbing per
+  bible 13 §5 + §11. Resolves a ``(kind, id)`` pair to the canonical
+  vault path and delegates to :func:`filesystem_write_text` with the
+  role hard-coded to :attr:`RoleEnum.OBSIDIAN_WRITER`. Caller renders
+  the Markdown body; per-kind renderer dispatch is Phase 5+ work
+  (see ``persistence.obsidian_writer`` module docstring).
+
+Phase 3 T4 renamed ``persistence/obsidian.py`` →
+``persistence/obsidian_writer.py`` per bible 04 §5.1, bible 13 §11,
+bible 18, and bible 20 §5.3 canonical naming. ``scaffold_obsidian``
+is preserved verbatim under the new module path.
 """
 
 from __future__ import annotations
@@ -36,7 +47,7 @@ from persistence.audit import (
 )
 from persistence.filesystem_writer import write_json as filesystem_write_json
 from persistence.filesystem_writer import write_text as filesystem_write_text
-from persistence.obsidian import scaffold_obsidian
+from persistence.obsidian_writer import scaffold_obsidian, write_artifact
 
 __all__ = [
     "atomic_write_json",
@@ -47,4 +58,5 @@ __all__ = [
     "scaffold_audit_logs",
     "scaffold_obsidian",
     "verify_audit_chain",
+    "write_artifact",
 ]

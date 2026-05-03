@@ -30,8 +30,8 @@ from unittest.mock import patch
 import pytest
 
 import paths
-from persistence import obsidian as obsidian_module
-from persistence.obsidian import _idempotent_write, scaffold_obsidian
+from persistence import obsidian_writer as obsidian_module
+from persistence.obsidian_writer import _idempotent_write, scaffold_obsidian
 
 
 # ─── Fixture ────────────────────────────────────────────────────────────
@@ -390,3 +390,296 @@ def test_idempotent_write_preserves_when_present_with_different_content(
     target.write_text("OPERATOR edit", encoding="utf-8")
     assert _idempotent_write(target, "scaffold default") is False
     assert target.read_text(encoding="utf-8") == "OPERATOR edit"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Phase 3 T4: write_artifact plumbing tests
+# ═══════════════════════════════════════════════════════════════════════
+
+from typing import get_args
+from unittest.mock import patch
+
+from persistence import filesystem_writer
+from persistence.audit import scaffold_audit_logs
+from persistence.obsidian_writer import (
+    ObsidianArtifactKind,
+    _kind_dirs,
+    _resolve_vault_path,
+    write_artifact,
+)
+from roles import RoleEnum
+
+
+_BIBLE_13_PATH = Path.home() / "cee" / "bible" / "13_obsidian_integration.md"
+_BIBLE_00_PATH = Path.home() / "cee" / "bible" / "00_project_vision.md"
+
+
+@pytest.fixture
+def write_env(
+    vault_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    """Vault root + audit-log scaffold + refreshed _ALLOWED_WRITES.
+
+    write_artifact() delegates to filesystem_write_text which (a)
+    consults filesystem_writer._ALLOWED_WRITES (built at import from
+    pre-patch paths.*) and (b) emits to paths.AUDIT_ROLES_LOG on
+    denial. We refresh the allowed-writes map so OBSIDIAN_WRITER's
+    allowed root reflects the patched OBSIDIAN_VAULT, and we redirect
+    all audit paths into tmp_path so any unexpected denial emit
+    doesn't pollute the real audit log.
+    """
+    audit_root = tmp_path / "cee_audit"
+    monkeypatch.setattr(paths, "AUDIT_DIR", audit_root)
+    monkeypatch.setattr(paths, "AUDIT_ARCHIVE_DIR", audit_root / "archive")
+    monkeypatch.setattr(paths, "AUDIT_CLI_LOG", audit_root / "cli.log")
+    monkeypatch.setattr(paths, "AUDIT_ROLES_LOG", audit_root / "roles.log")
+    monkeypatch.setattr(paths, "AUDIT_BOOT_LOG", audit_root / "boot.log")
+    monkeypatch.setattr(paths, "AUDIT_SECURITY_LOG", audit_root / "security.log")
+
+    monkeypatch.setattr(
+        filesystem_writer,
+        "_ALLOWED_WRITES",
+        filesystem_writer._rebuild_allowed_writes(),
+    )
+    scaffold_audit_logs()
+    return vault_root
+
+
+# ─── Per-kind path resolution (5 tests) ─────────────────────────────────
+
+
+def test_write_artifact_run_resolves_to_runs_dir(write_env: Path) -> None:
+    target = write_artifact("run", "run_2026_05_02_001", "# Run note")
+    assert target == write_env / "runs" / "run_2026_05_02_001.md"
+    assert _read(target) == "# Run note"
+
+
+def test_write_artifact_skill_resolves_to_skills_dir(write_env: Path) -> None:
+    target = write_artifact("skill", "read-codebase", "# Skill note")
+    assert target == write_env / "skills" / "read-codebase.md"
+    assert _read(target) == "# Skill note"
+
+
+def test_write_artifact_agent_resolves_to_agents_dir(write_env: Path) -> None:
+    target = write_artifact("agent", "primary-builder", "# Agent note")
+    assert target == write_env / "agents" / "primary-builder.md"
+    assert _read(target) == "# Agent note"
+
+
+def test_write_artifact_bible_section_resolves_to_bible_dir(
+    write_env: Path,
+) -> None:
+    target = write_artifact("bible_section", "00_project_vision", "# Bible mirror")
+    assert target == write_env / "bible" / "00_project_vision.md"
+    assert _read(target) == "# Bible mirror"
+
+
+def test_write_artifact_audit_summary_resolves_to_audit_dir(
+    write_env: Path,
+) -> None:
+    target = write_artifact("audit_summary", "2026-05-02", "# Daily summary")
+    assert target == write_env / "audit" / "2026-05-02.md"
+    assert _read(target) == "# Daily summary"
+
+
+# ─── Content + return invariants (4 tests) ──────────────────────────────
+
+
+def test_write_artifact_returns_resolved_path(write_env: Path) -> None:
+    target = write_artifact("run", "x", "body")
+    assert isinstance(target, Path)
+    assert target.is_absolute()
+
+
+def test_write_artifact_writes_exact_content_bytes(write_env: Path) -> None:
+    body = "---\ntype: run\nid: x\n---\n\n# Run x\n\nMixed UTF-8: café 🎯\n"
+    target = write_artifact("run", "x", body)
+    assert target.read_bytes() == body.encode("utf-8")
+
+
+def test_write_artifact_creates_parent_dir_if_missing(write_env: Path) -> None:
+    """OBSIDIAN_RUNS_DIR doesn't exist pre-call; atomic helper should
+    materialise it via paths.ensure_dir.
+    """
+    runs_dir = write_env / "runs"
+    assert not runs_dir.exists()
+    write_artifact("run", "x", "body")
+    assert runs_dir.is_dir()
+
+
+def test_write_artifact_uses_md_extension(write_env: Path) -> None:
+    target = write_artifact("skill", "my-skill", "body")
+    assert target.suffix == ".md"
+
+
+# ─── Idempotency (3 tests) ──────────────────────────────────────────────
+
+
+def test_write_artifact_overwrites_atomically_same_content(
+    write_env: Path,
+) -> None:
+    body = "# Content"
+    a = write_artifact("run", "x", body)
+    b = write_artifact("run", "x", body)
+    assert a == b
+    assert a.read_text(encoding="utf-8") == body
+
+
+def test_write_artifact_overwrites_atomically_different_content(
+    write_env: Path,
+) -> None:
+    a = write_artifact("run", "x", "first")
+    write_artifact("run", "x", "second")
+    assert a.read_text(encoding="utf-8") == "second"
+
+
+def test_write_artifact_overwrite_does_not_emit_audit_event(
+    write_env: Path,
+) -> None:
+    """T3's denial-only audit policy applies transitively: successful
+    write_artifact → no audit emission.
+    """
+    write_artifact("run", "x", "first")
+    write_artifact("run", "x", "second")
+    roles_log = paths.AUDIT_ROLES_LOG
+    contents = roles_log.read_text(encoding="utf-8").strip()
+    assert contents == "", f"unexpected audit emission: {contents!r}"
+
+
+# ─── Role enforcement smoke (2 tests) ───────────────────────────────────
+
+
+def test_write_artifact_lands_inside_obsidian_vault(write_env: Path) -> None:
+    """Path resolution always lands under paths.OBSIDIAN_VAULT, which
+    is OBSIDIAN_WRITER's allowed root per bible 02 §7.10. Smoke
+    verifies the structural invariant T3 enforces.
+    """
+    for kind in get_args(ObsidianArtifactKind):
+        target = _resolve_vault_path(kind, "x")
+        assert target.is_relative_to(write_env), (
+            f"{kind} path {target} escaped vault root {write_env}"
+        )
+
+
+def test_write_artifact_uses_obsidian_writer_role(write_env: Path) -> None:
+    """Patch filesystem_write_text and assert role= is hard-coded to
+    OBSIDIAN_WRITER (not pulled from a kwarg or fallback).
+    """
+    with patch(
+        "persistence.obsidian_writer._filesystem_write_text"
+    ) as fake_write:
+        write_artifact("run", "x", "body", run_id="run_123")
+    fake_write.assert_called_once()
+    args, kwargs = fake_write.call_args
+    assert args[0] == RoleEnum.OBSIDIAN_WRITER
+    assert kwargs["run_id"] == "run_123"
+
+
+# ─── Closed enum behaviour (3 tests) ────────────────────────────────────
+
+
+def test_write_artifact_unknown_kind_raises_keyerror(write_env: Path) -> None:
+    with pytest.raises(KeyError):
+        write_artifact("unknown_kind", "x", "body")  # type: ignore[arg-type]
+
+
+def test_write_artifact_kind_index_rejected(write_env: Path) -> None:
+    """``index`` is bible 13 Rule 5's sixth note type but is NOT a
+    write_artifact target — indexes are scaffold-time per Rule 9.
+    """
+    with pytest.raises(KeyError):
+        write_artifact("index", "runs", "body")  # type: ignore[arg-type]
+
+
+def test_kind_enum_contains_five_members() -> None:
+    members = get_args(ObsidianArtifactKind)
+    assert len(members) == 5
+    assert set(members) == {
+        "run", "skill", "agent", "bible_section", "audit_summary"
+    }
+
+
+# ─── Bible-grounding drift detectors (3 tests) ──────────────────────────
+
+
+def test_artifact_kind_enum_matches_bible_13_rule_5() -> None:
+    """Bible 13 Rule 5 enumerates note types as
+    {run, skill, agent, bible_section, audit_summary, index}. T4's
+    write_artifact handles 5 (excludes index per Rule 9). Each of the
+    5 must appear as a §5.x section heading in bible 13.
+    """
+    if not _BIBLE_13_PATH.exists():
+        pytest.skip(f"Bible mirror not found at {_BIBLE_13_PATH}")
+    text = _BIBLE_13_PATH.read_text(encoding="utf-8")
+    expected_headings = (
+        ("run", "### 5.2 The `run` note format"),
+        ("skill", "### 5.3 The `skill` note format"),
+        ("agent", "### 5.4 The `agent` note format"),
+        ("bible_section", "### 5.5 The `bible_section` note format"),
+        ("audit_summary", "### 5.6 The `audit_summary` note format"),
+    )
+    for kind, heading in expected_headings:
+        assert heading in text, (
+            f"bible 13 §5 heading for {kind!r} not found: {heading!r}"
+        )
+
+
+def test_vault_layout_paths_match_bible_13_5_1() -> None:
+    """Bible 13 §5.1 names the per-kind subdirectories. _kind_dirs()
+    must point at those subdirectories.
+    """
+    if not _BIBLE_13_PATH.exists():
+        pytest.skip(f"Bible mirror not found at {_BIBLE_13_PATH}")
+    text = _BIBLE_13_PATH.read_text(encoding="utf-8")
+    layout = text[text.find("### 5.1"):text.find("### 5.2")]
+    for subdir_name in ("runs/", "skills/", "agents/", "bible/", "audit/"):
+        assert subdir_name in layout, (
+            f"bible 13 §5.1 layout missing canonical subdir {subdir_name!r}"
+        )
+
+    dirs = _kind_dirs()
+    assert dirs["run"].name == "runs"
+    assert dirs["skill"].name == "skills"
+    assert dirs["agent"].name == "agents"
+    assert dirs["bible_section"].name == "bible"
+    assert dirs["audit_summary"].name == "audit"
+
+
+def test_obsidian_writer_module_named_per_bible_13_11() -> None:
+    """Bible 13 §11 canonizes ``~/cee/persistence/obsidian_writer.py``
+    as the writer location. The post-rename module path must match.
+    """
+    if not _BIBLE_13_PATH.exists():
+        pytest.skip(f"Bible mirror not found at {_BIBLE_13_PATH}")
+    text = _BIBLE_13_PATH.read_text(encoding="utf-8")
+    assert "`~/cee/persistence/obsidian_writer.py`" in text, (
+        "bible 13 §11 canonical writer location not found"
+    )
+
+    from persistence import obsidian_writer
+    module_path = Path(obsidian_writer.__file__)
+    assert module_path.name == "obsidian_writer.py"
+    assert module_path.parent.name == "persistence"
+
+
+# ─── Renderer-deferral marker checks (2 tests) ──────────────────────────
+
+
+def test_renderer_dispatch_marker_present() -> None:
+    """Bible 13 §11 names a per-kind public API (write_run, write_skill,
+    etc.) deferred to Phase 5+. T4 leaves a grep-able #35 marker so
+    the wire-up pass can find it.
+    """
+    src = Path(obsidian_module.__file__).read_text(encoding="utf-8")
+    assert "TODO #35" in src
+    assert "bible 13 §11" in src
+
+
+def test_strict_5_10_hash_skip_marker_present() -> None:
+    """Bible 13 §5.10 mandates content-hash-based idempotency in the
+    per-Run renderer. T4 ships filesystem-level atomic overwrite only;
+    the #36 marker tracks the deferral.
+    """
+    src = Path(obsidian_module.__file__).read_text(encoding="utf-8")
+    assert "TODO #36" in src
+    assert "bible 13 §5.10" in src

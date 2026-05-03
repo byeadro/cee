@@ -41,7 +41,7 @@ import paths
 from config_loader.loader import load_config
 from persistence.atomic import atomic_write_text
 from persistence.audit import audit_log_append, scaffold_audit_logs
-from persistence.obsidian import scaffold_obsidian
+from persistence.obsidian_writer import scaffold_obsidian
 
 
 # Bible 12 §5.3 documents the file format. The header here is a learning
