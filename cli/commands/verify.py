@@ -56,9 +56,11 @@ Bible mapping (schemas):
 * **00 §12 B8 + 04 §6.x** — adds ``PromotionQueue`` (Phase 3 task 2,
   closes downstream candidate #21; bible canonical entry shape ratified
   by this schema, tracked as downstream candidate #31).
+* **12 §7.2** — adds ``RedactionLog`` (Phase 3 task 6, T6 ships the
+  redactor + the per-Run RedactionLog artifact).
 * **21 §5.2 task 15** — operational build notes for this command.
 
-The reconciled count is **17 schemas**, split six ways for reporting:
+The reconciled count is **18 schemas**, split seven ways for reporting:
 
 * **Pipeline artifacts (10)** — produced/consumed by the pipeline at
   runtime. Each declares ``produced_by: RoleEnum``.
@@ -72,6 +74,9 @@ The reconciled count is **17 schemas**, split six ways for reporting:
 * **Promotion queue (1)** — ``PromotionQueue`` for
   ``~/cee/promotion_queue.json``; declares ``produced_by:
   RoleEnum.NOTION_WRITER`` (bible 02 §7.11 + bible 00 §12 B8).
+* **Safety gate (1)** — ``RedactionLog`` for
+  ``~/cee/runs/<run_id>/redaction_log.json``; declares
+  ``produced_by: RoleEnum.SAFETY_GATE`` (bible 12 §7.2).
 
 The 23-path layout canonical set:
 
@@ -254,6 +259,7 @@ SCHEMA_MANIFEST: tuple[tuple[str, str, bool, str], ...] = (
     ("schemas.sync_meta", "SyncMeta", True, "bible_sync"),
     ("schemas.credentials", "Credentials", False, "user_config"),
     ("schemas.promotion_queue", "PromotionQueue", True, "queue"),
+    ("schemas.redaction_log", "RedactionLog", True, "safety"),
 )
 
 _CATEGORY_HEADINGS: tuple[tuple[str, str], ...] = (
@@ -263,6 +269,7 @@ _CATEGORY_HEADINGS: tuple[tuple[str, str], ...] = (
     ("bible_sync", "Bible sync state schemas"),
     ("user_config", "User config schemas"),
     ("queue", "Promotion queue schemas"),
+    ("safety", "Safety gate schemas"),
 )
 
 # Pad the class-name column to one space past the longest name in the

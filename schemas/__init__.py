@@ -92,6 +92,7 @@ from schemas.promotion_queue import (
     PromotionStatus,
 )
 from schemas.raw_input import Attachment, RawInput
+from schemas.redaction_log import RedactionLog, RedactionLogEntry
 # Aliased to avoid colliding with cee.errors.RunError (the exception class).
 # The schema models the on-disk ``error.json`` artifact (bible 03 §7.3 /
 # bible 19 §5.5); the exception class signals the failure at runtime.
@@ -128,6 +129,9 @@ __all__ = [
     "PromotionQueueEntry",
     "PromotionKind",
     "PromotionStatus",
+    # Phase 3 — redaction log (T6, bible 12 §7.2)
+    "RedactionLog",
+    "RedactionLogEntry",
     # User configuration — task 10 (bible 04 §5.2)
     "Config",
     "GeneralConfig",
