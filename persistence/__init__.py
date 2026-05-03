@@ -30,6 +30,17 @@ Public surface (Phase 3):
   role hard-coded to :attr:`RoleEnum.OBSIDIAN_WRITER`. Caller renders
   the Markdown body; per-kind renderer dispatch is Phase 5+ work
   (see ``persistence.obsidian_writer`` module docstring).
+- :func:`queue` / :func:`drain` / :func:`mark_approved` /
+  :func:`mark_rejected` / :func:`read_queue` — promotion queue
+  lifecycle per bible 07 §11 line 411 + bible 00 §12 B8. T5 ships
+  orchestration only; concrete Notion writes defer to a later commit
+  when T6's ``NotionMCPClient`` Protocol gains write methods
+  (downstream candidate #52). With the current T6 stub, :func:`drain`
+  catches ``NotImplementedError`` from ``client.connect()`` and
+  returns :class:`DrainResult` with ``transport_unavailable=True``
+  per bible 00 §12 B8 "Failures stay queued".
+- :class:`DrainResult` — read-only summary of a :func:`drain`
+  invocation, mirroring :class:`boot.bible_sync.SyncResult` shape.
 
 Phase 3 T4 renamed ``persistence/obsidian.py`` →
 ``persistence/obsidian_writer.py`` per bible 04 §5.1, bible 13 §11,
@@ -47,14 +58,28 @@ from persistence.audit import (
 )
 from persistence.filesystem_writer import write_json as filesystem_write_json
 from persistence.filesystem_writer import write_text as filesystem_write_text
+from persistence.notion_writer import (
+    DrainResult,
+    drain,
+    mark_approved,
+    mark_rejected,
+    queue,
+    read_queue,
+)
 from persistence.obsidian_writer import scaffold_obsidian, write_artifact
 
 __all__ = [
+    "DrainResult",
     "atomic_write_json",
     "atomic_write_text",
     "audit_log_append",
+    "drain",
     "filesystem_write_json",
     "filesystem_write_text",
+    "mark_approved",
+    "mark_rejected",
+    "queue",
+    "read_queue",
     "scaffold_audit_logs",
     "scaffold_obsidian",
     "verify_audit_chain",

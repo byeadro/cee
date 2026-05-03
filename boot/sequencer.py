@@ -950,17 +950,18 @@ def _run_b8(ctx: BootContext) -> tuple[BootStepResult, list[str]]:
     line 391's literal "B1–B7" halt scope — B8 failure surfaces as
     warning + payload only, B9 still runs.
 
-    Phase 2 substrate has no ``promotion_queue.json``. Phase 3+
-    ``persistence.notion_writer`` ships the writer that drains it.
-    Three outcomes:
+    Phase 3 T5 ships ``persistence.notion_writer.drain`` per bible 07
+    §11 line 411. Outcomes:
 
     * Queue file missing → ``payload = {"skipped": "queue_not_found"}``,
       no warning. Most common in Phase 2.
-    * Queue file present, writer not yet implemented → warning emitted,
-      no actual drain attempted.
-    * Queue file present + writer exists (Phase 3+ future) → drain
-      attempt; per-entry failures stay queued; catastrophic outage
-      becomes a warning, not a halt.
+    * Queue file present + drain returns ``DrainResult`` → payload
+      mirrors DrainResult fields; warning iff
+      ``transport_unavailable`` or per-entry failures occurred.
+    * Queue file present + drain raises (defensive safety net; T5
+      contracts that ``drain`` never raises) → warning + payload
+      ``skipped="drain_raised"``; ``ok=False`` on this step but boot
+      continues to B9 per AB Q2.
     """
     started = time.monotonic()
     _audit_emit_step_start("B8")
@@ -981,71 +982,25 @@ def _run_b8(ctx: BootContext) -> tuple[BootStepResult, list[str]]:
         _audit_emit_step_complete(result)
         return result, []
 
-    # Queue file exists. Try to import the Phase 3 writer.
+    # Queue file exists. Call T5's bible-grounded drain() per
+    # bible 07 §11 line 411. T5 contracts that drain() never raises;
+    # the try/except below is a defensive safety net.
     try:
-        from persistence import notion_writer  # type: ignore[attr-defined]
+        from persistence import drain
 
-        drain_fn = getattr(notion_writer, "drain_queue", None)
-    except ImportError:
-        drain_fn = None
-
-    if drain_fn is None:
-        warning = (
-            f"B8: promotion_queue.json exists at {queue_path} but "
-            "persistence.notion_writer.drain_queue is not implemented "
-            "(Phase 3+ feature); entries left queued"
-        )
-        _audit_emit_b8_warning(reason="writer_pending", queue_path=queue_path)
-        payload = {
-            "skipped": "writer_pending",
-            "queue_path": str(queue_path),
-        }
-        summary = "promotion queue present but writer pending — skipped"
-        duration_ms = int((time.monotonic() - started) * 1000)
-        result = BootStepResult(
-            step="B8",
-            ok=True,
-            duration_ms=duration_ms,
-            summary=summary,
-            payload=payload,
-        )
-        _audit_emit_step_complete(result)
-        return result, [warning]
-
-    # Phase 3+ path — writer exists; attempt drain. Catastrophic
-    # failures are caught + warned; ``ok`` stays True per AB Q2.
-    try:
-        drain_outcome = drain_fn(queue_path)
-        drained = int(drain_outcome.get("drained", 0))
-        remaining = int(drain_outcome.get("remaining", 0))
-        payload = {
-            "drained": drained,
-            "remaining": remaining,
-            "queue_path": str(queue_path),
-        }
-        summary = f"promotion queue drained ({drained} drained, {remaining} remaining)"
-        duration_ms = int((time.monotonic() - started) * 1000)
-        result = BootStepResult(
-            step="B8",
-            ok=True,
-            duration_ms=duration_ms,
-            summary=summary,
-            payload=payload,
-        )
-        _audit_emit_step_complete(result)
-        return result, []
+        drain_result = drain()
     except Exception as exc:  # noqa: BLE001 — best-effort per AB Q2
         warning = (
-            f"B8: promotion drain failed ({type(exc).__name__}: {exc}); "
-            "entries left queued"
+            f"B8: promotion drain raised unexpectedly "
+            f"({type(exc).__name__}: {exc}); entries left queued"
         )
-        _audit_emit_b8_warning(reason="drain_failed", queue_path=queue_path)
+        _audit_emit_b8_warning(reason="drain_raised", queue_path=queue_path)
         payload = {
-            "skipped": "drain_failed",
+            "skipped": "drain_raised",
             "queue_path": str(queue_path),
             "error": f"{type(exc).__name__}: {exc}",
         }
-        summary = f"promotion drain failed ({type(exc).__name__}) — entries queued"
+        summary = f"promotion drain raised ({type(exc).__name__}) — entries queued"
         duration_ms = int((time.monotonic() - started) * 1000)
         result = BootStepResult(
             step="B8",
@@ -1056,6 +1011,60 @@ def _run_b8(ctx: BootContext) -> tuple[BootStepResult, list[str]]:
         )
         _audit_emit_step_complete(result)
         return result, [warning]
+
+    # Normal path — DrainResult returned. Payload mirrors DrainResult
+    # fields; ``ok=True`` on this step regardless of transport state
+    # per AB Q2 (B8 best-effort never sets step ok=False from drain
+    # outcomes — only the defensive raise above does).
+    payload = {
+        "ok": drain_result.ok,
+        "attempted": list(drain_result.attempted),
+        "succeeded": list(drain_result.succeeded),
+        "failed": [
+            {"slug": slug, "error_type": err}
+            for slug, err in drain_result.failed
+        ],
+        "skipped": list(drain_result.skipped),
+        "transport_unavailable": drain_result.transport_unavailable,
+        "queue_path": str(queue_path),
+    }
+
+    warnings_to_return: list[str] = []
+    if drain_result.transport_unavailable:
+        warning = (
+            f"B8: notion transport unavailable; "
+            f"{len(drain_result.attempted)} entries left queued"
+        )
+        _audit_emit_b8_warning(
+            reason="transport_unavailable", queue_path=queue_path
+        )
+        warnings_to_return.append(warning)
+    elif drain_result.failed:
+        warning = (
+            f"B8: promotion drain partial failure; "
+            f"{len(drain_result.failed)} entries failed, "
+            f"{len(drain_result.succeeded)} succeeded"
+        )
+        _audit_emit_b8_warning(
+            reason="partial_failure", queue_path=queue_path
+        )
+        warnings_to_return.append(warning)
+
+    summary = (
+        f"promotion queue: {len(drain_result.succeeded)} drained, "
+        f"{len(drain_result.failed)} failed, "
+        f"{len(drain_result.skipped)} skipped"
+    )
+    duration_ms = int((time.monotonic() - started) * 1000)
+    result = BootStepResult(
+        step="B8",
+        ok=True,
+        duration_ms=duration_ms,
+        summary=summary,
+        payload=payload,
+    )
+    _audit_emit_step_complete(result)
+    return result, warnings_to_return
 
 
 # --------------------------------------------------------------------------- #

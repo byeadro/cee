@@ -208,13 +208,41 @@ def test_synthetic_halt_at_b2_with_auto_sync_disabled(
 
 
 def test_synthetic_b8_warning_when_queue_present_no_writer(
-    integ_env: dict[str, Path]
+    integ_env: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Queue present + writer not implemented → warning, not halt."""
-    integ_env["promotion_queue"].write_text("[]", encoding="utf-8")
+    """Queue present + drain transport unavailable -> warning, not halt.
+
+    Phase 3 T5 ships persistence.notion_writer.drain per bible 07 §11
+    line 411; T6's stub raises NotImplementedError on connect(),
+    surfacing as DrainResult.transport_unavailable=True. B8 emits a
+    warning but boot continues.
+
+    (Originally tested the now-dead 'writer_pending' branch; T5 makes
+    that branch unreachable. Migrated to the new equivalent.)
+    """
+    # Rebuild filesystem_writer._ALLOWED_WRITES so NOTION_WRITER can
+    # target the temp PROMOTION_QUEUE path. T5's drain persists the
+    # queue after marking entries with last_error.
+    from persistence import filesystem_writer
+
+    monkeypatch.setattr(
+        filesystem_writer,
+        "_ALLOWED_WRITES",
+        filesystem_writer._rebuild_allowed_writes(),
+    )
+
+    # Seed one queued entry so drain has something to mark.
+    integ_env["promotion_queue"].write_text(
+        '{"schema_version":"1.0.0","produced_by":"NOTION_WRITER",'
+        '"last_updated":"2026-01-01T00:00:00Z",'
+        '"entries":[{"slug":"x","kind":"skill","status":"queued",'
+        '"enqueued_at":"2026-01-01T00:00:00Z","payload_path":"/tmp/x.md"}]}',
+        encoding="utf-8",
+    )
+
     br = run(**_factories())
     assert br.ok is True
-    assert any("promotion_queue.json exists" in w for w in br.warnings)
+    assert any("transport unavailable" in w for w in br.warnings)
 
 
 def test_idempotent_consecutive_boots_chain_intact(

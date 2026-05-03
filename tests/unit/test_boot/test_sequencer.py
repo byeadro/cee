@@ -710,57 +710,87 @@ def test_b8_queue_not_found_returns_skipped(tmp_env: dict[str, Path]) -> None:
     assert warnings == []
 
 
-def test_b8_queue_present_no_writer_emits_warning(tmp_env: dict[str, Path]) -> None:
+def test_b8_queue_present_drain_transport_unavailable_emits_warning(
+    tmp_env: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Phase 3 T5 ships drain(); current T6 stub raises NotImplementedError
+    on connect(), surfacing as transport_unavailable=True in DrainResult.
+    B8 emits warning + step ok stays True per AB Q2.
+
+    (Previously tested the now-dead 'writer_pending' branch; T5 makes
+    that branch unreachable since persistence.notion_writer is shipped.
+    Migrated to the new equivalent: queue exists + drain reports
+    transport unavailable.)
+    """
     ctx = _b1_ctx(tmp_env)
-    tmp_env["promotion_queue"].write_text("[]", encoding="utf-8")
+    tmp_env["promotion_queue"].write_text("dummy", encoding="utf-8")
+
+    from persistence import notion_writer as nw
+
+    fake_result = nw.DrainResult(
+        ok=False,
+        attempted=("a", "b"),
+        succeeded=(),
+        failed=(("a", "transport_not_implemented"), ("b", "transport_not_implemented")),
+        skipped=(),
+        transport_unavailable=True,
+    )
+    monkeypatch.setattr("persistence.drain", lambda: fake_result)
+
     result, warnings = sequencer._run_b8(ctx)
-    # No notion_writer module exists yet (Phase 3) — must NOT halt.
     assert result.ok is True
-    assert result.payload["skipped"] == "writer_pending"
+    assert result.payload["transport_unavailable"] is True
+    assert result.payload["attempted"] == ["a", "b"]
+    assert result.payload["succeeded"] == []
     assert len(warnings) == 1
-    assert "promotion_queue.json exists" in warnings[0]
+    assert "transport unavailable" in warnings[0]
 
 
 def test_b8_drain_failure_does_not_halt(
     tmp_env: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Even if a writer ships and crashes, B8 records warning + ok continues."""
+    """Defensive safety net: T5 contracts drain() never raises, but if
+    it ever did, B8 must still not halt boot. Per AB Q2."""
     ctx = _b1_ctx(tmp_env)
-    tmp_env["promotion_queue"].write_text("[]", encoding="utf-8")
+    tmp_env["promotion_queue"].write_text("dummy", encoding="utf-8")
 
-    # Inject a fake notion_writer that raises.
-    import sys
-    import types
-
-    fake_module = types.ModuleType("persistence.notion_writer")
-    def _raises(_p: Path) -> dict[str, int]:
+    def _raises() -> Any:
         raise RuntimeError("notion api down")
-    fake_module.drain_queue = _raises  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "persistence.notion_writer", fake_module)
+
+    monkeypatch.setattr("persistence.drain", _raises)
 
     result, warnings = sequencer._run_b8(ctx)
-    # B8 may report ok=False on its own step, but boot continues.
-    assert result.payload["skipped"] == "drain_failed"
+    # B8 reports ok=False on its own step (defensive raise path) but boot continues.
+    assert result.payload["skipped"] == "drain_raised"
     assert any("notion api down" in w for w in warnings)
 
 
 def test_b8_drain_success(
     tmp_env: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Happy path: drain returns DrainResult with succeeded entries;
+    payload mirrors DrainResult fields."""
     ctx = _b1_ctx(tmp_env)
-    tmp_env["promotion_queue"].write_text("[]", encoding="utf-8")
+    tmp_env["promotion_queue"].write_text("dummy", encoding="utf-8")
 
-    import sys
-    import types
+    from persistence import notion_writer as nw
 
-    fake_module = types.ModuleType("persistence.notion_writer")
-    fake_module.drain_queue = lambda _p: {"drained": 3, "remaining": 0}  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "persistence.notion_writer", fake_module)
+    fake_result = nw.DrainResult(
+        ok=True,
+        attempted=("skill_a", "skill_b", "skill_c"),
+        succeeded=("skill_a", "skill_b", "skill_c"),
+        failed=(),
+        skipped=(),
+        transport_unavailable=False,
+    )
+    monkeypatch.setattr("persistence.drain", lambda: fake_result)
 
     result, warnings = sequencer._run_b8(ctx)
     assert result.ok is True
-    assert result.payload["drained"] == 3
-    assert result.payload["remaining"] == 0
+    assert result.payload["ok"] is True
+    assert result.payload["succeeded"] == ["skill_a", "skill_b", "skill_c"]
+    assert result.payload["failed"] == []
+    assert result.payload["transport_unavailable"] is False
     assert warnings == []
 
 
@@ -881,18 +911,17 @@ def test_run_halts_at_b6_on_schema_failure(
 def test_run_b8_failure_does_not_set_ok_false(
     tmp_env: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Per AB Q2: B8 best-effort never halts boot."""
+    """Per AB Q2: B8 best-effort never halts boot.
+
+    Defensive safety-net path — T5 contracts drain() never raises but
+    if it ever did, boot continues with the warning surfaced."""
     factories = _ok_factories()
-    tmp_env["promotion_queue"].write_text("[]", encoding="utf-8")
+    tmp_env["promotion_queue"].write_text("dummy", encoding="utf-8")
 
-    import sys
-    import types
-
-    fake_module = types.ModuleType("persistence.notion_writer")
-    def _raises(_p: Path) -> dict:
+    def _raises() -> Any:
         raise RuntimeError("notion outage")
-    fake_module.drain_queue = _raises  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "persistence.notion_writer", fake_module)
+
+    monkeypatch.setattr("persistence.drain", _raises)
 
     br = run(**factories)
     # Boot succeeds despite B8 failure.
