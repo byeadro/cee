@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from cli.commands.audit_verify import cmd_audit_verify
 from cli.commands.init import cmd_init
 from cli.commands.sync_bible import cmd_sync_bible
 from cli.commands.verify import cmd_verify
@@ -104,6 +105,20 @@ def main(argv: list[str] | None = None) -> int:
         help="Sync the bible mirror from Notion (bible 04 §5.6)",
     )
     sync_bible_parser.set_defaults(func=cmd_sync_bible)
+
+    audit_verify_parser = subparsers.add_parser(
+        "audit-verify",
+        help="Verify hash chain integrity of the four canonical audit "
+        "logs under ~/cee/audit/ (bible 12 §10.6 + bible 20 §5.3)",
+        description=(
+            "Verify the hash chain integrity of every canonical audit "
+            "log under ~/cee/audit/ — cli.log, roles.log, boot.log, "
+            "security.log (bible 12 §5.8). Detects tampering or "
+            "corruption per bible 12 §10.6. Pure read; no writes. "
+            "Phase 3 CLI surface per bible 20 §5.3."
+        ),
+    )
+    audit_verify_parser.set_defaults(func=cmd_audit_verify)
 
     args = parser.parse_args(argv)
     try:

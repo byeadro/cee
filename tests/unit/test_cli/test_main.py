@@ -279,3 +279,33 @@ def test_main_verify_help_includes_obsidian_option(
     normalized = " ".join(out.split())
     assert "bible 13 §5" in normalized
     assert "bible 20 §5.3" in normalized
+
+
+# ─── Phase 3 task 10: audit-verify subcommand registration ─────────────
+
+
+def test_main_audit_verify_subcommand_is_registered() -> None:
+    """``cee audit-verify`` parses without error and dispatches to cmd_audit_verify."""
+    fake_cmd = MagicMock(return_value=0)
+    with patch.object(main_module, "cmd_audit_verify", fake_cmd):
+        rc = main(["audit-verify"])
+    assert rc == 0
+    fake_cmd.assert_called_once()
+    ns = fake_cmd.call_args.args[0]
+    assert ns.command == "audit-verify"
+
+
+def test_main_audit_verify_help_includes_bible_citations(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``cee audit-verify --help`` mentions bible 12 §10.6 and bible 20 §5.3.
+
+    Whitespace-normalized for argparse line-wrapping resilience —
+    same defensive pattern as test_main_verify_help_includes_obsidian_option.
+    """
+    with pytest.raises(SystemExit):
+        main(["audit-verify", "--help"])
+    out = capsys.readouterr().out
+    normalized = " ".join(out.split())
+    assert "bible 12 §10.6" in normalized
+    assert "bible 20 §5.3" in normalized
