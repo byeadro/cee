@@ -29,6 +29,7 @@ import sys
 
 from cli.commands.audit_verify import cmd_audit_verify
 from cli.commands.init import cmd_init
+from cli.commands.scaffold_obsidian import cmd_scaffold_obsidian
 from cli.commands.sync_bible import cmd_sync_bible
 from cli.commands.verify import cmd_verify
 from errors import BootError
@@ -119,6 +120,22 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     audit_verify_parser.set_defaults(func=cmd_audit_verify)
+
+    scaffold_obsidian_parser = subparsers.add_parser(
+        "scaffold-obsidian",
+        help="Create the ~/SecondBrain/cee/ vault scaffold (bible 13 "
+        "§5.1 + bible 20 §5.3). Idempotent.",
+        description=(
+            "Create the Obsidian vault scaffold under ~/SecondBrain/cee/ "
+            "per bible 13 §5.1 — 7 directories plus README.md and 5 "
+            "index.md stubs (13 paths total). Idempotent: re-runnable "
+            "on partial or complete scaffolds; existing files are "
+            "never modified (bible 13 §EC3 manual-edit preservation). "
+            "Operator-facing complement to cee verify --obsidian. "
+            "Phase 3 CLI surface per bible 20 §5.3."
+        ),
+    )
+    scaffold_obsidian_parser.set_defaults(func=cmd_scaffold_obsidian)
 
     args = parser.parse_args(argv)
     try:

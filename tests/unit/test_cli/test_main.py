@@ -309,3 +309,32 @@ def test_main_audit_verify_help_includes_bible_citations(
     normalized = " ".join(out.split())
     assert "bible 12 §10.6" in normalized
     assert "bible 20 §5.3" in normalized
+
+
+# ─── Phase 3 task 11: scaffold-obsidian subcommand registration ────────
+
+
+def test_main_scaffold_obsidian_subcommand_is_registered() -> None:
+    """``cee scaffold-obsidian`` parses without error and dispatches to cmd."""
+    fake_cmd = MagicMock(return_value=0)
+    with patch.object(main_module, "cmd_scaffold_obsidian", fake_cmd):
+        rc = main(["scaffold-obsidian"])
+    assert rc == 0
+    fake_cmd.assert_called_once()
+    ns = fake_cmd.call_args.args[0]
+    assert ns.command == "scaffold-obsidian"
+
+
+def test_main_scaffold_obsidian_help_includes_bible_citations(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``cee scaffold-obsidian --help`` mentions bible 13 §5.1 and bible 20 §5.3.
+
+    Whitespace-normalized for argparse line-wrapping resilience.
+    """
+    with pytest.raises(SystemExit):
+        main(["scaffold-obsidian", "--help"])
+    out = capsys.readouterr().out
+    normalized = " ".join(out.split())
+    assert "bible 13 §5.1" in normalized
+    assert "bible 20 §5.3" in normalized
