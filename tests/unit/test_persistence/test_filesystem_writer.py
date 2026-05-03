@@ -502,11 +502,40 @@ def test_in_memory_only_roles_excluded_from_map() -> None:
     )
 
 
-def test_redactor_hook_marker_present() -> None:
-    """Bible 12 §5 line 470 mandates filesystem_writer.py call the
-    redactor before writing. Redactor ships in T6; T3 leaves a
-    grep-able marker so the wire-up pass can find it.
+def test_filesystem_writer_does_not_invoke_redactor_per_bible_12_5_7() -> None:
+    """Bible 12 §5.7 canonical Detailed Workflow: filesystem_writer does
+    NOT re-run the redactor. Redaction is SAFETY_GATE's responsibility
+    upstream; filesystem_writer writes already-redacted bytes. Re-running
+    the redactor here would corrupt audit-log hash chains, bible mirror
+    canonical content (bible 12 §5.2 contains regex examples that would
+    self-redact), and registry index.json files.
+
+    Path A close of downstream candidate #32 (bible-misread; superseded
+    by #42 surfacing bible 12 §5.7-vs-§11-line-470 contradiction).
     """
     src = Path(filesystem_writer.__file__).read_text(encoding="utf-8")
-    assert "TODO #32" in src
-    assert "bible 12 §5" in src
+
+    # filesystem_writer must not import safety_gate (transitively or
+    # directly). String-presence in source is sufficient — the module
+    # has no conditional imports.
+    assert "from safety_gate" not in src, (
+        "filesystem_writer must not invoke the redactor per bible 12 §5.7"
+    )
+    assert "import safety_gate" not in src, (
+        "filesystem_writer must not invoke the redactor per bible 12 §5.7"
+    )
+
+    # The §5.7 grounding comment must remain (anchors the negative
+    # contract; future readers see why the wire-up was deliberately
+    # omitted).
+    assert "bible 12 §5.7" in src, (
+        "filesystem_writer must document the §5.7-grounded non-invocation"
+    )
+
+    # The original active TODO marker must be gone (Path A closure).
+    # Asserts the literal active-marker text — historical references in
+    # the module docstring (e.g., "originally placed a ``# TODO #32``")
+    # are intentional documentation and do not count as active markers.
+    assert "TODO #32 / bible 12 §5: invoke redactor" not in src, (
+        "active TODO #32 marker should be removed in Path A closure"
+    )

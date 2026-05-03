@@ -56,10 +56,14 @@ Bible references:
 * **04 §5.1** — names this module at ``~/cee/persistence/filesystem_writer.py``.
 * **04 §11** + **14** + **23** — every filesystem write must go through
   ``persistence.atomic``; this module enforces that.
-* **12 §5** (line 470) — filesystem_writer.py must call the redactor
-  before writing. Redactor ships in Phase 3 T6; the hook marker
-  ``TODO #32`` is placed at the role-validation boundary so the wire-up
-  pass can find it.
+* **12 §5.7** — Substrate-specific security passes. The canonical
+  Detailed Workflow excludes filesystem_writer from substrate-redaction
+  duty: only OBSIDIAN_WRITER and NOTION_WRITER re-run the redactor as
+  defense-in-depth on derived substrates. Filesystem (canon) substrate's
+  security pass is mode-bits + path-containment, NOT redaction. (T3
+  originally placed a ``# TODO #32`` redactor-hook marker grounded in
+  §11 line 470, but that line contradicts §5.7; closed Path A in
+  post-T6 reconciliation. See build_status.md #32 + #42.)
 * **12 §5.8** — rejected-write audit emission is mandatory.
 * **20 §5.3** — Phase 3 output: "atomic writes, role-aware".
 """
@@ -163,7 +167,14 @@ def _assert_role_can_write(
     the raise so the forensic record is durable even if the caller's
     exception handler swallows the violation.
     """
-    # TODO #32 / bible 12 §5: invoke redactor here once T6 ships.
+    # filesystem_writer does NOT re-run the redactor per bible 12 §5.7
+    # canonical Detailed Workflow. Redaction is SAFETY_GATE's responsibility
+    # upstream; filesystem_writer writes already-redacted bytes. Re-running
+    # the redactor here would corrupt audit-log hash chains, bible mirror
+    # canonical content, and registry index.json files (false-positive
+    # matches on hash digests, regex examples in bible 12 §5.2 itself, etc.).
+    # See build_status.md candidate #32 (closed) and #42 for the bible
+    # 12 §5.7-vs-§11-line-470 contradiction.
     resolved = path.resolve()
     allowed = _ALLOWED_WRITES.get(role)
 
