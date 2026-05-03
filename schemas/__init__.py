@@ -55,6 +55,7 @@ from schemas.clarification_request import (
     ClarificationQuestion,
     ClarificationRequest,
 )
+from schemas.confirmation import Confirmation, ConfirmationRequest
 from schemas.credentials import AnthropicCredentials, Credentials
 from schemas.classification import (
     CandidateScore,
@@ -132,6 +133,9 @@ __all__ = [
     # Phase 3 — redaction log (T6, bible 12 §7.2)
     "RedactionLog",
     "RedactionLogEntry",
+    # Phase 3 — confirmation gate (T8, bible 12 §7.3)
+    "Confirmation",
+    "ConfirmationRequest",
     # User configuration — task 10 (bible 04 §5.2)
     "Config",
     "GeneralConfig",

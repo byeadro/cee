@@ -260,6 +260,8 @@ SCHEMA_MANIFEST: tuple[tuple[str, str, bool, str], ...] = (
     ("schemas.credentials", "Credentials", False, "user_config"),
     ("schemas.promotion_queue", "PromotionQueue", True, "queue"),
     ("schemas.redaction_log", "RedactionLog", True, "safety"),
+    ("schemas.confirmation", "ConfirmationRequest", True, "safety"),
+    ("schemas.confirmation", "Confirmation", True, "safety"),
 )
 
 _CATEGORY_HEADINGS: tuple[tuple[str, str], ...] = (

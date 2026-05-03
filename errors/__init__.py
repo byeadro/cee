@@ -5,6 +5,7 @@ the exception class hierarchy from §5.7.
 """
 
 from errors.exceptions import (
+    AwaitingDestructiveConfirmation,
     BootBibleSyncError,
     BootConsistencyError,
     BootEnvironmentError,
@@ -47,4 +48,6 @@ __all__ = [
     "RoleSurfaceViolation",
     "InjectionDetected",
     "RedactionFailed",
+    # Phase 3 T8 — destructive-action gate (bible 12 §5.4)
+    "AwaitingDestructiveConfirmation",
 ]

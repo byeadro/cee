@@ -16,9 +16,17 @@ safety gate has three responsibilities:
   (downstream candidate #43).
 * **Destructive-action gate** (§5.4) — Phase 3 task T8. Halts the
   pipeline before destructive Run completion until the OPERATOR
-  confirms via ``cee confirm <run_id>``. Confirmation schemas
-  (``Confirmation``, ``ConfirmationRequest``) ship with T8 per
-  schema-with-producer discipline (downstream candidate #46).
+  confirms via ``cee confirm <run_id>``. Ships four pure builders
+  (:func:`build_safety_banner_text`, :func:`build_confirmation_request`,
+  :func:`build_operator_message`, :func:`record_confirmation`),
+  the two Pydantic schemas (:class:`Confirmation`,
+  :class:`ConfirmationRequest`), and the convenience exception
+  subclass :class:`errors.AwaitingDestructiveConfirmation`.
+  Detection of destructive actions is OUT OF SCOPE per bible 12
+  §5.4 line 233 (lives in CLASSIFIER per bible 08 §5.4.3, Phase 4
+  territory). ``cee confirm`` / ``cee abort`` CLI commands and 24h
+  auto-abort thread defer to Track C / future infrastructure
+  (downstream candidates #48 + #49).
 
 Phase 3 T6 public surface:
 
@@ -42,11 +50,35 @@ Phase 3 T7 public surface:
   pipeline decides whether to halt with ``injection_detected``.
 * :class:`InjectionMatch` — frozen dataclass mirroring bible §5.5's
   ``InjectionFlag``: ``(pattern, location, tag)``.
+
+Phase 3 T8 public surface:
+
+* :func:`build_safety_banner_text` — returns the bible §5.4 line 216
+  ``"[CONFIRM BEFORE EXECUTION]"`` banner string for the FinalPrompt's
+  ``<safety_banner>`` tag.
+* :func:`build_confirmation_request` — pure builder for
+  :class:`ConfirmationRequest` (the at-gate artifact).
+* :func:`build_operator_message` — pure builder for the bible §5.4
+  lines 220-228 user-facing halt message.
+* :func:`record_confirmation` — pure builder for
+  :class:`Confirmation` (the OPERATOR-confirms-receipt artifact).
+* :class:`Confirmation` / :class:`ConfirmationRequest` — re-exported
+  Pydantic models from :mod:`schemas.confirmation`.
+* :class:`errors.AwaitingDestructiveConfirmation` — re-exported
+  ``PipelineHalt`` subclass; payload carries the serialized
+  :class:`ConfirmationRequest`.
 """
 
 from __future__ import annotations
 
-from errors import RedactionFailed
+from errors import AwaitingDestructiveConfirmation, RedactionFailed
+from schemas.confirmation import Confirmation, ConfirmationRequest
+from safety_gate.confirmation import (
+    build_confirmation_request,
+    build_operator_message,
+    build_safety_banner_text,
+    record_confirmation,
+)
 from safety_gate.injection_scanner import InjectionMatch, scan_text
 from safety_gate.redactor import (
     assert_no_residual,
@@ -55,10 +87,17 @@ from safety_gate.redactor import (
 )
 
 __all__ = [
+    "AwaitingDestructiveConfirmation",
+    "Confirmation",
+    "ConfirmationRequest",
     "InjectionMatch",
     "RedactionFailed",
     "assert_no_residual",
+    "build_confirmation_request",
+    "build_operator_message",
+    "build_safety_banner_text",
     "load_user_patterns",
+    "record_confirmation",
     "redact",
     "scan_text",
 ]

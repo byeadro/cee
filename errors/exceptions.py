@@ -21,6 +21,7 @@ from errors.types import HaltType, RunErrorType
 
 if TYPE_CHECKING:
     from boot.consistency import DriftRecord
+    from schemas.confirmation import ConfirmationRequest
 
 
 class CEEException(Exception):
@@ -339,4 +340,29 @@ class RedactionFailed(PipelineHalt):
         super().__init__(
             halt_type=HaltType.REDACTION_FAILED,
             payload={"residual_patterns": residual_patterns},
+        )
+
+
+class AwaitingDestructiveConfirmation(PipelineHalt):
+    """Convenience subclass of ``PipelineHalt`` for the destructive-action
+    gate halt per bible 12 §5.4.
+
+    Auto-sets ``halt_type`` to
+    ``HaltType.AWAITING_DESTRUCTIVE_CONFIRMATION`` and stores the
+    supplied :class:`schemas.ConfirmationRequest` (serialized to a JSON-
+    safe dict) as ``payload={"request": <dump>}``. The pipeline driver
+    writes this payload to ``halt.json`` per bible 19 §7.1; the CLI
+    reads it to render the bible §5.4 lines 220-228 user-facing
+    message.
+
+    Mirrors the existing :class:`InjectionDetected` /
+    :class:`RedactionFailed` constructor pattern: typed input, dict
+    payload, no schema validation in the exception itself (per-halt
+    schemas live elsewhere — here in :mod:`schemas.confirmation`).
+    """
+
+    def __init__(self, request: "ConfirmationRequest") -> None:
+        super().__init__(
+            halt_type=HaltType.AWAITING_DESTRUCTIVE_CONFIRMATION,
+            payload={"request": request.model_dump(mode="json")},
         )
