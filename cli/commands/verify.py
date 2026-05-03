@@ -33,6 +33,20 @@ Phase 2 task 10 adds:
   halts are caught and rendered as a section ✗ with reuse of T9's
   ``_BOOT_HALT_HINTS`` table for the stderr remediation hint.
 
+Phase 3 task 9 adds:
+
+* ``--obsidian`` — read-only verifier for the ``~/SecondBrain/cee/``
+  vault scaffold per bible 13 §5.1 + bible 20 §5.3. Walks the same
+  13-path Obsidian manifest that ``--layout`` checks (vault root +
+  ``README.md`` + 5 content dirs + their 5 ``index.md`` stubs +
+  ``_templates/``), but reports under its own ``--obsidian`` heading
+  so the OPERATOR can verify just the vault without checking user
+  config or audit logs. Includes halt-on-vault-missing semantics
+  (short-circuits before walking 12 children under a missing root)
+  and a two-entry ``_OBSIDIAN_VERIFY_HINTS`` remediation table.
+  Scaffolding lives in ``cee scaffold-obsidian`` (Phase 3 task 11) —
+  this mode never writes.
+
 Bible mapping (layout):
 
 * **04 §10.1** — Layout drift failure mode. The verifier is the
@@ -865,24 +879,139 @@ def _verify_bible() -> int:
     return 1
 
 
+# ─── Obsidian verifier (Phase 3 task 9) ────────────────────────────────
+
+
+# Remediation hints for ``cee verify --obsidian`` failures. Two-entry
+# table keyed by failure category, mirroring the inline-hint precedent
+# established by :data:`_BOOT_HALT_HINTS` (T9 of Phase 2) and
+# :data:`_BIBLE_DRIFT_HINTS` (T10 of Phase 2). Both remediations point
+# at ``cee scaffold-obsidian`` (Phase 3 task 11) — the OPERATOR-facing
+# complement to this verifier — since it is idempotent (re-runnable on
+# a partially-scaffolded vault without harm) per
+# :func:`persistence.scaffold_obsidian`'s create-only semantics.
+#
+# The split between ``vault_missing`` and ``scaffold_incomplete`` lets
+# the OPERATOR distinguish "first-run / vault deleted" (the entire root
+# is gone) from "drift / partial loss" (root present, some children
+# missing). The remediation is identical because ``cee scaffold-obsidian``
+# handles both, but the framing is different so the OPERATOR's mental
+# model matches what they're seeing on disk.
+#
+# Long-term home for these hints is bible 19 §5.6 alongside
+# :data:`_BOOT_HALT_HINTS` + :data:`_BIBLE_DRIFT_HINTS` (downstream
+# candidate alongside #24 + #27, surfaced during T9/T10 Phase 2).
+_OBSIDIAN_VERIFY_HINTS: dict[str, str] = {
+    "vault_missing":
+        "run `cee scaffold-obsidian` to create the vault root + "
+        "scaffold per bible 13 §5.1",
+    "scaffold_incomplete":
+        "run `cee scaffold-obsidian` to create missing directories "
+        "and index stubs (idempotent)",
+}
+
+
+def _verify_obsidian() -> int:
+    """Verify the Obsidian vault scaffold, render the report, return exit code.
+
+    Per bible 20 §5.3 (Phase 3 CLI surface) + bible 13 §5.1 (canonical
+    vault layout), this is the read-only verifier for the
+    ``~/SecondBrain/cee/`` vault scaffold. The 13-path canonical set
+    (vault root + ``README.md`` + 5 content dirs + their 5 ``index.md``
+    stubs + ``_templates/``) mirrors :func:`persistence.scaffold_obsidian`
+    exactly via the shared :func:`_obsidian_required` manifest also
+    consumed by :func:`_verify_layout`.
+
+    **Halt-on-vault-missing.** When :data:`paths.OBSIDIAN_VAULT` itself
+    is missing, the verifier short-circuits before walking children —
+    rendering 12 spurious "missing child" lines under a missing root
+    would obscure the real failure (the root carries every other
+    path). Instead one focused halt-style line is printed, the
+    ``vault_missing`` hint goes to stderr, and the verifier returns 1.
+
+    **No writes.** This verifier is strictly read-only; scaffolding
+    lives in ``cee scaffold-obsidian`` (Phase 3 task 11). Any failure
+    is expected to be remediated by running that verb.
+
+    Per the T9/T10 Phase 2 contract pattern: this function does NOT
+    propagate exceptions. It inspects filesystem state and renders
+    the result; ``cli.main.main``'s outer ``BootError`` catch is not
+    in the path because no boot-step code runs here.
+
+    Returns
+    -------
+    int
+        ``0`` if every required path is present with the correct kind;
+        ``1`` if the vault root is missing OR any scaffold child is
+        missing/wrong-type. Exit code ``2`` is reserved for the outer
+        :func:`cli.main.main` catch — non-CEE exceptions only.
+    """
+    print("CEE Obsidian Verification")
+    print()
+
+    # Halt-on-vault-missing: short-circuit before walking 13 children
+    # so the OPERATOR sees one focused line instead of 13 spurious
+    # missing-child reports under a missing root.
+    if not paths.OBSIDIAN_VAULT.exists():
+        print(
+            f"✗ {_shorten_path(paths.OBSIDIAN_VAULT)}  "
+            "MISSING (directory) — vault root absent; "
+            "scaffold required before any further checks."
+        )
+        print()
+        print("FAILED: Obsidian vault root missing.")
+        sys.stderr.write("OBSIDIAN HALT [vault_missing]\n")
+        sys.stderr.write(
+            f"Hint: {_OBSIDIAN_VERIFY_HINTS['vault_missing']}\n"
+        )
+        return 1
+
+    print("Obsidian vault (~/SecondBrain/cee/):")
+    total = 0
+    present = 0
+    for path, kind in _obsidian_required():
+        print(f"  {_render_item(path, kind)}")
+        total += 1
+        if _is_ok(path, kind):
+            present += 1
+    print()
+
+    missing = total - present
+    print(f"Summary: {present} of {total} paths present.", end="")
+    if missing == 0:
+        print()
+        print("PASSED.")
+        return 0
+    print(f" {missing} missing.")
+    print("FAILED: Obsidian vault scaffold incomplete.")
+    sys.stderr.write("OBSIDIAN HALT [scaffold_incomplete]\n")
+    sys.stderr.write(
+        f"Hint: {_OBSIDIAN_VERIFY_HINTS['scaffold_incomplete']}\n"
+    )
+    return 1
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     """``cee verify`` dispatcher.
 
     Phase 1 shipped ``--layout`` and ``--schemas``; Phase 2 task 9
-    added ``--boot``; Phase 2 task 10 adds ``--bible``. Future modes
-    (``--security``) plug in here. Behaviour:
+    added ``--boot``; Phase 2 task 10 added ``--bible``; Phase 3 task 9
+    adds ``--obsidian``. Future modes (``--security``) plug in here.
+    Behaviour:
 
     * No flag → print usage hint to stderr, return ``2`` (matches
       argparse's malformed-invocation exit code).
     * One flag → run that mode, return its exit code.
     * Multiple flags → run each mode in declaration order
-      (layout → schemas → boot → bible), return the worst exit code
-      so a failure in any is surfaced.
+      (layout → schemas → boot → bible → obsidian), return the worst
+      exit code so a failure in any is surfaced.
     """
-    if not (args.layout or args.schemas or args.boot or args.bible):
+    if not (
+        args.layout or args.schemas or args.boot or args.bible or args.obsidian
+    ):
         print(
             "Specify a verify mode "
-            "(e.g. --layout, --schemas, --boot, or --bible)",
+            "(e.g. --layout, --schemas, --boot, --bible, or --obsidian)",
             file=sys.stderr,
         )
         return 2
@@ -896,4 +1025,6 @@ def cmd_verify(args: argparse.Namespace) -> int:
         exit_codes.append(_verify_boot())
     if args.bible:
         exit_codes.append(_verify_bible())
+    if args.obsidian:
+        exit_codes.append(_verify_obsidian())
     return max(exit_codes)

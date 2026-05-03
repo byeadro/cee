@@ -244,3 +244,38 @@ def test_main_verify_help_includes_bible_option(
     out = capsys.readouterr().out
     assert "--bible" in out
     assert "drift" in out.lower() or "consistency" in out.lower()
+
+
+# ─── Phase 3 task 9: --obsidian flag registration ──────────────────────
+
+
+def test_main_verify_obsidian_flag_is_registered() -> None:
+    """``cee verify --obsidian`` parses without an argparse error."""
+    fake_cmd = MagicMock(return_value=0)
+    with patch.object(main_module, "cmd_verify", fake_cmd):
+        rc = main(["verify", "--obsidian"])
+    assert rc == 0
+    ns = fake_cmd.call_args.args[0]
+    assert ns.obsidian is True
+    assert ns.bible is False
+    assert ns.boot is False
+    assert ns.layout is False
+    assert ns.schemas is False
+
+
+def test_main_verify_help_includes_obsidian_option(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``cee verify --help`` mentions --obsidian + bible 13 §5 + bible 20 §5.3."""
+    with pytest.raises(SystemExit):
+        main(["verify", "--help"])
+    out = capsys.readouterr().out
+    assert "--obsidian" in out
+    # Bible citation grounding per CLI surface convention (matches the
+    # --layout / --schemas / --boot / --bible help-text precedent).
+    # Normalize whitespace so argparse's column-80 line-wrapping
+    # (which can split ``bible 20 §5.3`` across a newline + indent)
+    # doesn't cause a spurious miss.
+    normalized = " ".join(out.split())
+    assert "bible 13 §5" in normalized
+    assert "bible 20 §5.3" in normalized

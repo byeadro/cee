@@ -90,6 +90,13 @@ def main(argv: list[str] | None = None) -> int:
         help="Verify bible consistency (B3) + bible drift vs Notion "
         "(bible 04 §5.5 + §5.6, bible 20 §5.2)",
     )
+    verify_parser.add_argument(
+        "--obsidian",
+        action="store_true",
+        help="Verify Obsidian vault scaffold under ~/SecondBrain/cee/ "
+        "(read-only existence checks against bible 13 §5 layout, "
+        "per bible 20 §5.3 Phase 3 CLI surface)",
+    )
     verify_parser.set_defaults(func=cmd_verify)
 
     sync_bible_parser = subparsers.add_parser(

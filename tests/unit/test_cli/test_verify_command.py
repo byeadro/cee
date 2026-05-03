@@ -29,11 +29,13 @@ from pydantic import BaseModel
 import paths
 from cli.commands import verify as verify_module
 from cli.commands.verify import (
+    _OBSIDIAN_VERIFY_HINTS,
     SCHEMA_MANIFEST,
     _is_ok,
     _render_item,
     _shorten_path,
     _verify_layout,
+    _verify_obsidian,
     _verify_one_schema,
     _verify_schemas,
     cmd_verify,
@@ -111,6 +113,7 @@ def _ns(
     schemas: bool = False,
     boot: bool = False,
     bible: bool = False,
+    obsidian: bool = False,
 ) -> argparse.Namespace:
     """Argparse Namespace stand-in matching the verify subparser shape."""
     return argparse.Namespace(
@@ -118,6 +121,7 @@ def _ns(
         schemas=schemas,
         boot=boot,
         bible=bible,
+        obsidian=obsidian,
         command="verify",
     )
 
@@ -360,15 +364,20 @@ def test_cmd_verify_without_any_flag_returns_two(
     cee_root: dict[str, Path], capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Bare ``cee verify`` (no mode) → exit 2 + usage hint on stderr."""
-    rc = cmd_verify(_ns(layout=False, schemas=False, boot=False, bible=False))
+    rc = cmd_verify(
+        _ns(
+            layout=False, schemas=False, boot=False, bible=False, obsidian=False,
+        )
+    )
     captured = capsys.readouterr()
     assert rc == 2
     assert "Specify a verify mode" in captured.err
-    # The hint must mention all four currently-shipping modes.
+    # The hint must mention every currently-shipping mode.
     assert "--layout" in captured.err
     assert "--schemas" in captured.err
     assert "--boot" in captured.err
     assert "--bible" in captured.err
+    assert "--obsidian" in captured.err
     # Nothing written to stdout (the report belongs to a real mode).
     assert captured.out == ""
 
@@ -1420,4 +1429,228 @@ def test_cmd_verify_with_bible_and_boot_runs_both_max_exit_code() -> None:
         rc = cmd_verify(_ns(layout=False, schemas=False, boot=True, bible=True))
     boot_spy.assert_called_once()
     bible_spy.assert_called_once()
+    assert rc == 1  # max(0, 1)
+
+
+# ─── Phase 3 task 9: --obsidian flag ───────────────────────────────────
+
+
+# Per design proposal Path A (AB-approved): scaffold-existence checks
+# only — no frontmatter walk, no --vault-path. The 13-path canonical
+# Obsidian set is the same one ``--layout`` already walks (vault root +
+# README.md + 5 content dirs + their 5 index.md stubs + _templates/),
+# but reported under a dedicated heading with halt-on-vault-missing
+# semantics + a 2-entry remediation hint table.
+
+
+def test_verify_obsidian_returns_zero_when_all_present(
+    cee_root: dict[str, Path],
+) -> None:
+    """Happy path on a fully-seeded vault → exit 0."""
+    assert _verify_obsidian() == 0
+
+
+def test_verify_obsidian_passed_message_when_all_present(
+    cee_root: dict[str, Path], capsys: pytest.CaptureFixture[str],
+) -> None:
+    _verify_obsidian()
+    out = capsys.readouterr().out
+    assert "PASSED." in out
+
+
+def test_verify_obsidian_summary_shows_correct_counts(
+    cee_root: dict[str, Path], capsys: pytest.CaptureFixture[str],
+) -> None:
+    """All 13 obsidian paths present → ``Summary: 13 of 13 paths present.``"""
+    _verify_obsidian()
+    out = capsys.readouterr().out
+    assert "Summary: 13 of 13 paths present." in out
+
+
+def test_verify_obsidian_returns_one_when_vault_root_missing(
+    cee_root: dict[str, Path],
+) -> None:
+    """Vault root deleted → halt-on-vault-missing → exit 1."""
+    shutil.rmtree(cee_root["obsidian_vault"])
+    assert _verify_obsidian() == 1
+
+
+def test_verify_obsidian_does_not_walk_when_vault_root_missing(
+    cee_root: dict[str, Path], capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Halt-on-vault-missing short-circuits — no spurious child reports.
+
+    A naive walk under a missing root would emit 12 spurious "missing
+    child" lines, obscuring the real failure. This test asserts the
+    short-circuit behaviour: only the vault-root MISSING line appears,
+    not children like ``runs/index.md`` or ``README.md``.
+    """
+    shutil.rmtree(cee_root["obsidian_vault"])
+    _verify_obsidian()
+    out = capsys.readouterr().out
+    # The vault-root failure line must be present.
+    assert "MISSING" in out
+    # Spurious child reports must NOT appear (the verifier short-circuits
+    # at the root check before walking the 12 children).
+    assert "README.md" not in out
+    assert "index.md" not in out
+    assert "runs" not in out
+    assert "skills" not in out
+    assert "agents" not in out
+    assert "_templates" not in out
+
+
+def test_verify_obsidian_returns_one_when_runs_dir_missing(
+    cee_root: dict[str, Path],
+) -> None:
+    shutil.rmtree(paths.OBSIDIAN_RUNS_DIR)
+    assert _verify_obsidian() == 1
+
+
+def test_verify_obsidian_returns_one_when_skills_dir_missing(
+    cee_root: dict[str, Path],
+) -> None:
+    shutil.rmtree(paths.OBSIDIAN_SKILLS_DIR)
+    assert _verify_obsidian() == 1
+
+
+def test_verify_obsidian_returns_one_when_agents_dir_missing(
+    cee_root: dict[str, Path],
+) -> None:
+    shutil.rmtree(paths.OBSIDIAN_AGENTS_DIR)
+    assert _verify_obsidian() == 1
+
+
+def test_verify_obsidian_returns_one_when_bible_dir_missing(
+    cee_root: dict[str, Path],
+) -> None:
+    shutil.rmtree(paths.OBSIDIAN_BIBLE_DIR)
+    assert _verify_obsidian() == 1
+
+
+def test_verify_obsidian_returns_one_when_audit_dir_missing(
+    cee_root: dict[str, Path],
+) -> None:
+    shutil.rmtree(paths.OBSIDIAN_AUDIT_DIR)
+    assert _verify_obsidian() == 1
+
+
+def test_verify_obsidian_returns_one_when_templates_dir_missing(
+    cee_root: dict[str, Path],
+) -> None:
+    """``_templates/`` is required-and-empty per bible 13 §5.1."""
+    paths.OBSIDIAN_TEMPLATES_DIR.rmdir()
+    assert _verify_obsidian() == 1
+
+
+def test_verify_obsidian_returns_one_when_readme_missing(
+    cee_root: dict[str, Path],
+) -> None:
+    (paths.OBSIDIAN_VAULT / "README.md").unlink()
+    assert _verify_obsidian() == 1
+
+
+@pytest.mark.parametrize(
+    "subdir_attr",
+    [
+        "OBSIDIAN_RUNS_DIR",
+        "OBSIDIAN_SKILLS_DIR",
+        "OBSIDIAN_AGENTS_DIR",
+        "OBSIDIAN_BIBLE_DIR",
+        "OBSIDIAN_AUDIT_DIR",
+    ],
+)
+def test_verify_obsidian_returns_one_when_index_md_missing(
+    cee_root: dict[str, Path], subdir_attr: str,
+) -> None:
+    """Each of the 5 vault content subdirs must have its index.md."""
+    subdir = getattr(paths, subdir_attr)
+    (subdir / "index.md").unlink()
+    assert _verify_obsidian() == 1
+
+
+def test_verify_obsidian_stdout_uses_check_marks_for_present(
+    cee_root: dict[str, Path], capsys: pytest.CaptureFixture[str],
+) -> None:
+    _verify_obsidian()
+    out = capsys.readouterr().out
+    assert "✓" in out  # U+2713
+    # All present → no ✗ marks anywhere.
+    assert "✗" not in out
+
+
+def test_verify_obsidian_stderr_emits_scaffold_hint_on_failure(
+    cee_root: dict[str, Path], capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Drift (some scaffold child missing) → scaffold_incomplete hint on stderr."""
+    (paths.OBSIDIAN_VAULT / "README.md").unlink()
+    _verify_obsidian()
+    err = capsys.readouterr().err
+    assert "cee scaffold-obsidian" in err
+    assert "scaffold_incomplete" in err
+    # The hint text from the table appears verbatim.
+    assert _OBSIDIAN_VERIFY_HINTS["scaffold_incomplete"] in err
+
+
+def test_verify_obsidian_stderr_silent_on_success(
+    cee_root: dict[str, Path], capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Happy path emits nothing on stderr (the hint table is failure-only)."""
+    _verify_obsidian()
+    err = capsys.readouterr().err
+    assert err == ""
+
+
+def test_verify_obsidian_returns_one_when_wrong_type(
+    cee_root: dict[str, Path], capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A regular file occupying a directory slot is not 'present'."""
+    shutil.rmtree(paths.OBSIDIAN_RUNS_DIR)
+    paths.OBSIDIAN_RUNS_DIR.write_text("oops", encoding="utf-8")
+    rc = _verify_obsidian()
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "WRONG_TYPE" in out
+
+
+# ─── cmd_verify dispatcher coverage for --obsidian ──────────────────────
+
+
+def test_cmd_verify_with_obsidian_flag_dispatches_to_verify_obsidian(
+    cee_root: dict[str, Path],
+) -> None:
+    """cmd_verify(--obsidian) calls _verify_obsidian exactly once."""
+    with patch.object(
+        verify_module, "_verify_obsidian", return_value=0,
+    ) as spy:
+        rc = cmd_verify(
+            _ns(
+                layout=False, schemas=False, boot=False, bible=False,
+                obsidian=True,
+            )
+        )
+    spy.assert_called_once()
+    assert rc == 0
+
+
+def test_cmd_verify_with_obsidian_and_layout_runs_both_max_exit_code(
+    cee_root: dict[str, Path],
+) -> None:
+    """--layout --obsidian: both run; exit = max(layout_rc, obsidian_rc)."""
+    with (
+        patch.object(
+            verify_module, "_verify_layout", return_value=0,
+        ) as layout_spy,
+        patch.object(
+            verify_module, "_verify_obsidian", return_value=1,
+        ) as obsidian_spy,
+    ):
+        rc = cmd_verify(
+            _ns(
+                layout=True, schemas=False, boot=False, bible=False,
+                obsidian=True,
+            )
+        )
+    layout_spy.assert_called_once()
+    obsidian_spy.assert_called_once()
     assert rc == 1  # max(0, 1)
