@@ -1,0 +1,7 @@
+{
+  "text": "{\"goal\": \"Examine a Bernhard utility bill PDF and identify anomalies relative to last quarter.\", \"deliverable\": \"A structured findings report.\", \"constraints\": [\"Compare to last quarter\"], \"implicit_assumptions\": [\"Last quarter's bills are accessible somewhere\"], \"ambiguity_score\": 0.35, \"domain\": \"analysis\", \"raw_signals\": [\"task_explicit\", \"comparison_required\", \"attachment_present\"]}",
+  "input_tokens": 100,
+  "output_tokens": 50,
+  "_scenario": "happy_mid_ambiguity_utility_bill",
+  "_seed": "phase4-t5-fixture-happy_mid_ambiguity_utility_bill"
+}

@@ -1,0 +1,7 @@
+{
+  "text": "{\"goal\": \"Input is empty or non-actionable\", \"deliverable\": \"Clarification from the OPERATOR\", \"constraints\": [], \"implicit_assumptions\": [], \"ambiguity_score\": 1.0, \"domain\": \"other\", \"raw_signals\": []}",
+  "input_tokens": 100,
+  "output_tokens": 50,
+  "_scenario": "sentinel_fallback_empty_input",
+  "_seed": "phase4-t5-fixture-sentinel_fallback_empty_input"
+}

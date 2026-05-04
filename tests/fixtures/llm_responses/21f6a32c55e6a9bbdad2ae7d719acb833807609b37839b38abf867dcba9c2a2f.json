@@ -1,0 +1,7 @@
+{
+  "text": "{\"goal\": \"Write a Supabase RLS policy restricting users to read only their own rows in the mentor_inquiries table.\", \"deliverable\": \"A SQL policy statement.\", \"constraints\": [\"Supabase RLS\"], \"implicit_assumptions\": [\"The mentor_inquiries table has a user_id column referencing auth.users.id\"], \"ambiguity_score\": 0.15, \"domain\": \"code\", \"raw_signals\": [\"task_explicit\", \"domain_specific_terminology\"]}",
+  "input_tokens": 100,
+  "output_tokens": 50,
+  "_scenario": "happy_low_ambiguity_rls_policy",
+  "_seed": "phase4-t5-fixture-happy_low_ambiguity_rls_policy"
+}

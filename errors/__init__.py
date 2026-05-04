@@ -15,6 +15,8 @@ from errors.exceptions import (
     BootSchemaError,
     CEEException,
     InjectionDetected,
+    NoExecutableIntent,
+    PausedForClarification,
     PipelineHalt,
     RedactionFailed,
     RoleAuthorityError,
@@ -50,4 +52,7 @@ __all__ = [
     "RedactionFailed",
     # Phase 3 T8 — destructive-action gate (bible 12 §5.4)
     "AwaitingDestructiveConfirmation",
+    # Phase 4 T5 — interpreter halts (bible 03 §5.2 Step 2 + §5.3)
+    "NoExecutableIntent",
+    "PausedForClarification",
 ]

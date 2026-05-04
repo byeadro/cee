@@ -605,3 +605,61 @@ def test_boot_run_index_error_caught_via_BootError() -> None:
         assert exc.step == "B7"
     else:
         pytest.fail("BootError did not catch BootRunIndexError")
+
+
+# --------------------------------------------------------------------------- #
+# Phase 4 T5 — Interpreter halt convenience subclasses                        #
+# --------------------------------------------------------------------------- #
+#
+# NoExecutableIntent and PausedForClarification mirror InjectionDetected /
+# RedactionFailed / AwaitingDestructiveConfirmation as PipelineHalt
+# subclasses. They are NOT canonical bible §5.7 classes (the §5.7
+# enumeration lists 10 classes; the convenience subclasses are
+# downstream extensions). The bible-grounding test above intentionally
+# excludes them via _ALL_EXCEPTIONS.
+
+
+def test_no_executable_intent_constructs_with_required_fields() -> None:
+    from errors import NoExecutableIntent
+
+    exc = NoExecutableIntent(
+        reason="regex_pleasantry",
+        raw_text_preview="hi",
+        run_id="20260504_140000_a1b2c3d4",
+    )
+    assert exc.halt_type == HaltType.NO_EXECUTABLE_INTENT
+    assert exc.payload == {
+        "reason": "regex_pleasantry",
+        "raw_text_preview": "hi",
+        "run_id": "20260504_140000_a1b2c3d4",
+    }
+    assert isinstance(exc, PipelineHalt)
+
+
+def test_paused_for_clarification_constructs_with_clarification_request() -> None:
+    from errors import PausedForClarification
+    from schemas.clarification_request import (
+        ClarificationQuestion,
+        ClarificationRequest,
+    )
+
+    request = ClarificationRequest(
+        run_id="20260504_140000_a1b2c3d4",
+        questions=[
+            ClarificationQuestion(
+                id="ambiguity-clarification",
+                question="What did you mean?",
+                expected_answer_type="free_text",
+            )
+        ],
+        paused_at_step=2,
+        intent_object_so_far={"goal": "?"},
+        paused_at_iso_timestamp="2026-05-04T14:00:00+00:00",
+    )
+
+    exc = PausedForClarification(request=request)
+
+    assert exc.halt_type == HaltType.PAUSED_FOR_CLARIFICATION
+    assert exc.payload["request"]["run_id"] == "20260504_140000_a1b2c3d4"
+    assert exc.payload["request"]["paused_at_step"] == 2
+    assert isinstance(exc, PipelineHalt)

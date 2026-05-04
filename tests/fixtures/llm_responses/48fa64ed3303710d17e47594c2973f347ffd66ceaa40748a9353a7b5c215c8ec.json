@@ -1,0 +1,7 @@
+{
+  "text": "{\"goal\": \"Write a query.\", \"deliverable\": \"A SQL statement.\", \"constraints\": [], \"implicit_assumptions\": [], \"ambiguity_score\": \"definitely-not-a-number\", \"domain\": \"code\", \"raw_signals\": []}",
+  "input_tokens": 100,
+  "output_tokens": 50,
+  "_scenario": "wrong_type_ambiguity_score_string",
+  "_seed": "phase4-t5-fixture-wrong_type_ambiguity_score_string"
+}

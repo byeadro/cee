@@ -1,0 +1,7 @@
+{
+  "text": "{\"goal\": \"Help with the project.\", \"deliverable\": \"Clarification needed.\", \"constraints\": [], \"implicit_assumptions\": [\"unclear what 'project' refers to\", \"unclear what kind of help is wanted\"], \"ambiguity_score\": 0.85, \"domain\": \"other\", \"raw_signals\": [\"task_implicit\"]}",
+  "input_tokens": 100,
+  "output_tokens": 50,
+  "_scenario": "high_ambiguity_clarification_halt",
+  "_seed": "phase4-t5-fixture-high_ambiguity_clarification_halt"
+}

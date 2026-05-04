@@ -1,0 +1,7 @@
+{
+  "text": "{\"goal\": \"Write a query.\", \"deliverable\": \"A SQL statement.\", \"constraints\": [], \"implicit_assumptions\": [], \"ambiguity_score\": 0.2, \"raw_signals\": []}",
+  "input_tokens": 100,
+  "output_tokens": 50,
+  "_scenario": "missing_field_no_domain",
+  "_seed": "phase4-t5-fixture-missing_field_no_domain"
+}

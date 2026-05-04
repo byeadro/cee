@@ -377,6 +377,12 @@ Bible reconciliations surfaced during Phase 2 prep (commit `8963612`'s body). Di
 
 63. **`raw_signals` field tag-set canonization in IntentObject schema.** Bible 00 §5 Step 2 describes `raw_signals` only as "urgency markers, tone markers, domain markers" (descriptive, not enumerative). `schemas/intent_object.py` declares the field as `list[str]` (no enum). Bible 17's eight worked examples use 14 distinct snake_case tags across all examples but never declare the set as closed. T4's `interpreter_system.txt` ships a closed 17-tag set (the 14 from bible 17 plus 3 reasonable extensions: `task_implicit`, `urgency_marker`, `social_pleasantry`) to make Claude deterministic at temperature 0 — without closure, Claude would invent new tag strings across calls. Resolution: bible amend — canonize the closed tag set in bible 00 §5 Step 2 alongside the IntentObject schema, OR canonize as a closed Literal in `schemas/intent_object.py`. Once canonized, T4's prompt should be updated to source the tag list from the canonical authority. Surface area: small (one closed-Literal addition). Defer to: future bible-edit pass + schema tightening.
 
+64. **Pleasantry detection method canonization.** Bible 01 EC12 + bible 02 §248 + bible 03 §5.2 Step 2 reference "interpreter detects no actionable goal / social pleasantry" without specifying detection method. T5 ships a closed 6-regex set covering whitespace-only, greetings, thanks, acknowledgements, farewells, and punctuation-only inputs. Conversation-context awareness deferred — bare "no" / "yes" treated as pleasantry in Phase 4 (T5 has no concept of prior turn); Phase 7's pipeline driver may need to revisit when conversation/replay context exists. Resolution: bible amend (bible 01 EC12 or bible 03 §5.2 Step 2) — canonize regex set OR an alternative method spec; document conversation-context handling for Phase 7+. Defer to: future bible-edit pass.
+
+65. **Bible context injection format canonization.** Bible 03 §5.2 Step 2 says interpreter "loads bible §00, §01; loads recent Run logs for context" but neither bible 03 nor any other chapter defines the wire format (system msg vs user msg, full text vs summary, delimiter shape). T5 ships single-user-message format with `## BIBLE_CONTEXT` / `## RECENT_RUNS` / `## RAW_INPUT:` delimiters per T4's prompt INPUT-section accommodation. Resolution: bible amend — canonize format in bible 03 §5.2 Step 2 (or a new sub-section parallel to candidate #62's gap). T11 (classifier) will need analogous canonization. Defer to: future bible-edit pass.
+
+66. **boot/sequencer.py B7 drifts from intent.json canon and from canonical run_id pattern.** B7 reads `intent_object.json` (canonical artifact name per bible 03 §5.2 Step 2 and runs/ tree precedent: `intent.json`) and accepts `^run_[A-Za-z0-9_\-]+$` (canonical per bible 04 §4 Rule 3: `^\d{8}_\d{6}_[0-9a-f]{8}$`). Two independent drift bugs surfaced during T5 design phase. T5 ships its own minimal run-log loader using canonical filename + pattern (via `paths.derive_run_dir`); B7 fix deferred. Resolution: B7 patch — switch to `intent.json`, switch run_id pattern to canonical via `paths.derive_run_dir`. Defer to: dedicated B7-fix commit (small surface area).
+
 ---
 
 ## Phase 3 — Persistence + Substrate Adapters + Safety Gate
@@ -684,9 +690,9 @@ Status of every downstream-reconciliation candidate at Phase 3 close.
 | #46 | Closed | `c37ed04` (Phase 3 T8 — `Confirmation` + `ConfirmationRequest` schemas) |
 | #57 | Closed | `3c9ad81` (Phase 3 T5 — `notion_writer` + B8 migration) |
 | #43 | In-flight: in-scope for Phase 4 T13 (`scan(raw_input)` wrapper closure pending) | (resolution-commit ref TBD) |
-| (53 others) | Still deferred — phase-targeted or bible-edit-pass | n/a |
+| (56 others) | Still deferred — phase-targeted or bible-edit-pass | n/a |
 
-**Math verification:** 8 closed (#15, #23, #25, #30, #32, #41, #46, #57) + 1 partial (#21) + 1 in-flight (#43) + 53 still-open (47 carried-over + #58 + #59 + #60 + #61 + #62 + #63) = 63 total candidates. Matches `grep -c "^[0-9]\+\.\s\+\*\*" build_status.md` post-sweep.
+**Math verification:** 8 closed (#15, #23, #25, #30, #32, #41, #46, #57) + 1 partial (#21) + 1 in-flight (#43) + 56 still-open (47 carried-over + #58 + #59 + #60 + #61 + #62 + #63 + #64 + #65 + #66) = 66 total candidates. Matches `grep -c "^[0-9]\+\.\s\+\*\*" build_status.md` post-sweep.
 
 ---
 
@@ -779,7 +785,7 @@ Phase 3 candidate #45 (InjectionScanResult Pydantic wrapper for halt-envelope se
 **Reads:** T3, T4, bible 03 §5.2 Step 2, bible 00 §5 Step 2, bible 12 §5.8 (audit shape).
 **Writes:** `interpreter/interpreter.py`, `tests/unit/test_interpreter/`.
 **Bible cross-refs:** bible 03, bible 00, bible 12.
-**Verification:** unit tests pass with mock client; ambiguity branching exercised at all 3 thresholds; audit events emitted correctly; integration with T3 verified.
+**Verification:** `Interpreter` class shipped at `interpreter/interpreter.py` with DI surface (`client` + `config`). `NoExecutableIntent` + `PausedForClarification` convenience halt subclasses appended to `errors/exceptions.py` mirroring `InjectionDetected` / `RedactionFailed` precedent. Pre-LLM 6-regex pleasantry detector ships canonical-by-shipped-state (candidate #64). Bible context injection as single user message with `## BIBLE_CONTEXT` / `## RECENT_RUNS` / `## RAW_INPUT:` delimiters ships canonical-by-shipped-state (candidate #65). Recent-runs loader independent from B7 (which drifted — candidate #66) — uses canonical `intent.json` filename + canonical run_id pattern via `paths.derive_run_dir`. ClarificationRequest fallback wording deterministic. `pipeline_step_start` / `pipeline_step_complete` audit events emitted via `try/finally` (verified on success / halt / error paths). 9 reference fixture JSON files seeded at `tests/fixtures/llm_responses/` for T12+ use. Test count delta: +44 (1540 → 1584); 10 pleasantry + 15 context + 17 interpreter + 2 exception subclass tests.
 
 #### Task 6 — verb_classes.json
 

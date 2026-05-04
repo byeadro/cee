@@ -21,6 +21,7 @@ from errors.types import HaltType, RunErrorType
 
 if TYPE_CHECKING:
     from boot.consistency import DriftRecord
+    from schemas.clarification_request import ClarificationRequest
     from schemas.confirmation import ConfirmationRequest
 
 
@@ -364,5 +365,66 @@ class AwaitingDestructiveConfirmation(PipelineHalt):
     def __init__(self, request: "ConfirmationRequest") -> None:
         super().__init__(
             halt_type=HaltType.AWAITING_DESTRUCTIVE_CONFIRMATION,
+            payload={"request": request.model_dump(mode="json")},
+        )
+
+
+class NoExecutableIntent(PipelineHalt):
+    """Convenience subclass of ``PipelineHalt`` for the interpreter
+    pleasantry / non-actionable halt per bible 03 §5.2 Step 2 + bible
+    01 EC12.
+
+    Auto-sets ``halt_type`` to ``HaltType.NO_EXECUTABLE_INTENT``. The
+    payload carries (a) ``reason`` discriminating the detection path
+    (``regex_pleasantry`` for the pre-LLM regex-based pleasantry
+    detector, ``claude_sentinel`` for the post-LLM detection of the
+    T4-prompt-emitted sentinel goal ``"Input is empty or
+    non-actionable"``); (b) a truncated ``raw_text_preview`` (first
+    200 characters of the OPERATOR's input) for forensic readability
+    of the halt artifact; and (c) the ``run_id`` so the pipeline
+    driver writes the halt without re-deriving it.
+
+    Mirrors the existing :class:`InjectionDetected` /
+    :class:`RedactionFailed` constructor pattern: typed inputs, dict
+    payload, no schema validation in the exception itself.
+    """
+
+    def __init__(
+        self,
+        *,
+        reason: str,
+        raw_text_preview: str,
+        run_id: str,
+    ) -> None:
+        super().__init__(
+            halt_type=HaltType.NO_EXECUTABLE_INTENT,
+            payload={
+                "reason": reason,
+                "raw_text_preview": raw_text_preview,
+                "run_id": run_id,
+            },
+        )
+
+
+class PausedForClarification(PipelineHalt):
+    """Convenience subclass of ``PipelineHalt`` for the interpreter
+    ambiguity halt per bible 03 §5.2 Step 2 + bible 03 §5.3.
+
+    Auto-sets ``halt_type`` to ``HaltType.PAUSED_FOR_CLARIFICATION``
+    and stores the supplied :class:`schemas.ClarificationRequest`
+    (serialized to a JSON-safe dict) as ``payload={"request": <dump>}``.
+    The pipeline driver writes the request to
+    ``~/cee/runs/<run_id>/clarification.json`` per bible 03 §5.3 and
+    the wrapping payload to ``halt.json`` per bible 19 §7.1, then
+    emits the questions to stdout.
+
+    Mirrors :class:`AwaitingDestructiveConfirmation`: typed input,
+    dict payload, no schema validation in the exception itself
+    (per-halt schemas live in :mod:`schemas.clarification_request`).
+    """
+
+    def __init__(self, *, request: "ClarificationRequest") -> None:
+        super().__init__(
+            halt_type=HaltType.PAUSED_FOR_CLARIFICATION,
             payload={"request": request.model_dump(mode="json")},
         )

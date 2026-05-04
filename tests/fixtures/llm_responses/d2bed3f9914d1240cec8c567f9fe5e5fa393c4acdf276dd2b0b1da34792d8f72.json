@@ -1,0 +1,7 @@
+{
+  "text": "not json at all",
+  "input_tokens": 100,
+  "output_tokens": 50,
+  "_scenario": "malformed_json_not_json_at_all",
+  "_seed": "phase4-t5-fixture-malformed_json_not_json_at_all"
+}
