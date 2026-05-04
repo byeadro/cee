@@ -45,6 +45,24 @@ Three deferred enums (per AB resolution at T5 lock) are intentionally
 absent from the registry: ``ExpectedAnswerType`` (no bible canonical),
 ``MatchZone`` (algorithm-shape only), ``RawInput.source`` (no labeled
 enum). They will be added once their bible canonicals are reconciled.
+
+**Two-registry pattern (introduced by Phase 4 T2).** This module owns
+two parallel registries:
+
+* :data:`REGISTRY` — name-set drift detectors. Each entry asserts that
+  a closed enum's value-name set matches between bible and code.
+* :data:`THRESHOLD_REGISTRY` — numerical-boundary drift detectors. Each
+  entry asserts that a tier-style mapping (label → score range) matches
+  between bible and code.
+
+Name-set drift and numerical-mapping drift are conceptually different
+invariant categories; folding them into one dataclass would force the
+existing :class:`RegistryEntry` to carry a comparison-mode discriminator
+that makes name-set entries less honest about what they check. Keeping
+them parallel lets each registry stay narrowly typed. T2 ships the
+threshold-registry pattern with a single entry (``complexity_tier_thresholds``
+covering bible 08 §5.3); future phases (e.g., Phase 6's prompt-builder
+length-budget contracts) can add more.
 """
 
 from __future__ import annotations
@@ -102,15 +120,18 @@ class ConsistencyReport:
     """The result of one ``check()`` invocation.
 
     ``ok`` is True iff every registered entry passed every applicable
-    check. ``enums_checked`` counts every entry that was inspected
-    (regardless of outcome). ``drifts`` is the full ordered tuple of
-    detected drifts; the boot sequencer raises ``BootConsistencyError``
-    when this is non-empty.
+    check (across both :data:`REGISTRY` and :data:`THRESHOLD_REGISTRY`).
+    ``enums_checked`` counts every name-set entry that was inspected.
+    ``thresholds_checked`` (Phase 4 T2 addition) counts every
+    numerical-boundary entry that was inspected. ``drifts`` is the full
+    ordered tuple of detected drifts from both registries; the boot
+    sequencer raises ``BootConsistencyError`` when this is non-empty.
     """
 
     ok: bool
     enums_checked: int
     drifts: tuple[DriftRecord, ...]
+    thresholds_checked: int = 0
 
 
 # --------------------------------------------------------------------------- #
@@ -681,6 +702,174 @@ REGISTRY: dict[str, RegistryEntry] = {
 
 
 # --------------------------------------------------------------------------- #
+# Threshold registry — numerical-boundary detectors (Phase 4 T2)              #
+# --------------------------------------------------------------------------- #
+#
+# Parallel to REGISTRY. Each entry asserts that a tier-style mapping
+# ``label -> (min_score, max_score)`` matches between the bible's canonical
+# table and the code's encoding. Drift surfaces in the same
+# ``ConsistencyReport`` as ``DriftRecord`` with ``drift_kind="bible_canonical"``;
+# the ``code_values`` and ``bible_values`` carry repr strings of the
+# offending mappings so the existing report consumers (boot sequencer,
+# CLI verifier) need no shape changes.
+#
+# The single T2 entry covers bible 08 §5.3 (complexity tier score ranges).
+# Future phases can register more numerical contracts the same way.
+
+
+_TierThresholdMap = dict[str, tuple[int, int]]
+
+
+@dataclass(frozen=True)
+class ThresholdRegistryEntry:
+    """One numerical-boundary mapping tracked by the consistency check.
+
+    * ``name``                — human-readable label used in DriftRecords.
+    * ``code_source_loader``  — callable returning the
+      ``label -> (min, max)`` mapping declared in code.
+    * ``canonical_bible``     — bible filename hosting the canonical table.
+    * ``canonical_section``   — heading anchor (``"### 5.3 "``).
+    * ``extractor``           — callable taking ``(bible_text, section)``
+      and returning the canonical mapping. Single-purpose per entry —
+      the threshold table shapes vary too much to share extractors.
+    """
+
+    name: str
+    code_source_loader: Callable[[], _TierThresholdMap]
+    canonical_bible: str
+    canonical_section: str
+    extractor: Callable[[str, str], _TierThresholdMap]
+
+
+# Bible 08 §5.3 uses HTML tables with en-dash (U+2013) score ranges
+# (e.g. ``<td>0–24</td>``). The extractor accepts both en-dash and ASCII
+# hyphen for safety.
+_TIER_TABLE_ROW = re.compile(
+    r"<tr>\s*<td>\s*(?P<label>[A-Z]+)\s*</td>\s*"
+    r"<td>\s*(?P<lo>\d+)\s*[–\-]\s*(?P<hi>\d+)\s*</td>",
+)
+
+
+def _extract_tier_thresholds_from_bible_8_3(
+    bible_text: str, section_anchor: str
+) -> _TierThresholdMap:
+    """Parse bible 08 §5.3's tier table into ``label -> (min, max)``.
+
+    Anchors on the section heading then walks subsequent ``<tr>`` rows
+    until the next section heading or the table closer. Handles en-dash
+    (U+2013) and ASCII hyphen for the score-range separator.
+    """
+    section = _scope_section(bible_text, section_anchor)
+    if not section:
+        return {}
+    result: _TierThresholdMap = {}
+    for match in _TIER_TABLE_ROW.finditer(section):
+        label = match.group("label")
+        lo = int(match.group("lo"))
+        hi = int(match.group("hi"))
+        result[label] = (lo, hi)
+    return result
+
+
+def _code_tier_thresholds_classification() -> _TierThresholdMap:
+    """Probe ``schemas.classification._tier_from_score`` for its boundaries.
+
+    Calls the function at every integer in ``[0, 100]`` and buckets each
+    score by the tier label returned. The min/max of each bucket gives
+    the encoded boundary contract. This shape is robust to refactor of
+    the function body — only the public input/output behaviour matters.
+    """
+    from schemas.classification import _tier_from_score
+
+    buckets: dict[str, list[int]] = {}
+    for score in range(0, 101):
+        tier = _tier_from_score(score)
+        buckets.setdefault(tier, []).append(score)
+    return {label: (min(scores), max(scores)) for label, scores in buckets.items()}
+
+
+THRESHOLD_REGISTRY: dict[str, ThresholdRegistryEntry] = {
+    "complexity_tier_thresholds": ThresholdRegistryEntry(
+        name="complexity_tier_thresholds",
+        code_source_loader=_code_tier_thresholds_classification,
+        canonical_bible="08_task_classification_engine.md",
+        canonical_section="### 5.3 ",
+        extractor=_extract_tier_thresholds_from_bible_8_3,
+    ),
+}
+
+
+def _check_one_threshold(
+    entry: ThresholdRegistryEntry, bible_root: Path
+) -> list[DriftRecord]:
+    """Compare one threshold mapping between bible and code."""
+    drifts: list[DriftRecord] = []
+    section_label = entry.canonical_section.strip()
+
+    code_map = entry.code_source_loader()
+
+    bible_path = bible_root / entry.canonical_bible
+    if not bible_path.exists():
+        drifts.append(
+            DriftRecord(
+                enum_name=entry.name,
+                drift_kind="bible_canonical",
+                code_values=frozenset(_format_threshold_map(code_map)),
+                bible_values=None,
+                bible_section=f"{entry.canonical_bible} {section_label}",
+                detail=f"canonical bible page not found: {bible_path}",
+            )
+        )
+        return drifts
+
+    bible_text = bible_path.read_text(encoding="utf-8")
+    bible_map = entry.extractor(bible_text, entry.canonical_section)
+
+    if not bible_map:
+        drifts.append(
+            DriftRecord(
+                enum_name=entry.name,
+                drift_kind="bible_canonical",
+                code_values=frozenset(_format_threshold_map(code_map)),
+                bible_values=frozenset(),
+                bible_section=f"{entry.canonical_bible} {section_label}",
+                detail=(
+                    f"extractor returned empty mapping from "
+                    f"{entry.canonical_bible} {section_label} — anchor or "
+                    f"bible content has drifted"
+                ),
+            )
+        )
+    elif code_map != bible_map:
+        drifts.append(
+            DriftRecord(
+                enum_name=entry.name,
+                drift_kind="bible_canonical",
+                code_values=frozenset(_format_threshold_map(code_map)),
+                bible_values=frozenset(_format_threshold_map(bible_map)),
+                bible_section=f"{entry.canonical_bible} {section_label}",
+                detail=(
+                    f"threshold mapping drift: "
+                    f"code={_format_threshold_map(code_map)!r}, "
+                    f"bible={_format_threshold_map(bible_map)!r}"
+                ),
+            )
+        )
+
+    return drifts
+
+
+def _format_threshold_map(mapping: _TierThresholdMap) -> list[str]:
+    """Render a threshold mapping as a sorted ``"LABEL=lo..hi"`` list.
+
+    Used to fit threshold drift into the existing :class:`DriftRecord`
+    ``frozenset[str]`` value-set fields without needing a separate
+    record type.
+    """
+    return sorted(f"{label}={lo}..{hi}" for label, (lo, hi) in mapping.items())
+
+
+# --------------------------------------------------------------------------- #
 # Drift detection                                                             #
 # --------------------------------------------------------------------------- #
 
@@ -831,9 +1020,11 @@ def check(
 
     Optional ``bible_root`` redirects the canonical bible mirror (used
     by tests to point at fixtures). Optional ``entry_names`` restricts
-    the check to the named registry entries (used by tests to scope a
-    parametrized assertion to one enum at a time); when ``None`` every
-    entry is checked.
+    the name-set check to the named registry entries (used by tests to
+    scope a parametrized assertion to one enum at a time); when ``None``
+    every name-set entry is checked. Threshold-registry entries are
+    always checked (the registry is small enough that gating isn't
+    needed).
     """
     root = _resolve_bible_root(bible_root)
     selected = (
@@ -855,8 +1046,21 @@ def check(
             )
         all_drifts.extend(entry_drifts)
 
+    for name, threshold_entry in THRESHOLD_REGISTRY.items():
+        logger.info("boot.consistency: checking threshold %s", name)
+        threshold_drifts = _check_one_threshold(threshold_entry, root)
+        for d in threshold_drifts:
+            logger.warning(
+                "boot.consistency: drift %s (%s) — %s",
+                d.enum_name,
+                d.drift_kind,
+                d.detail,
+            )
+        all_drifts.extend(threshold_drifts)
+
     return ConsistencyReport(
         ok=not all_drifts,
         enums_checked=len(selected),
         drifts=tuple(all_drifts),
+        thresholds_checked=len(THRESHOLD_REGISTRY),
     )

@@ -239,6 +239,11 @@ def test_no_drift_clean_state(
         extractor=_extract_regex_python_class,
     )
     monkeypatch.setattr(consistency, "REGISTRY", {"Things": entry})
+    # Phase 4 T2 introduced THRESHOLD_REGISTRY which check() also iterates;
+    # the synthetic tmp_bible_root has no bible 08 so the real threshold
+    # entry would surface a spurious drift. Empty it for this clean-state
+    # test (mirrors the REGISTRY monkey-patch above).
+    monkeypatch.setattr(consistency, "THRESHOLD_REGISTRY", {})
 
     report = check(bible_root=tmp_bible_root)
     assert report.ok is True

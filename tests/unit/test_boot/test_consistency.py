@@ -420,3 +420,83 @@ def test_drift_record_is_frozen() -> None:
     )
     with pytest.raises(FrozenInstanceError):
         drift.detail = "tampered"  # type: ignore[misc]
+
+
+# --------------------------------------------------------------------------- #
+# THRESHOLD_REGISTRY — Phase 4 T2 numerical-boundary detector                 #
+# --------------------------------------------------------------------------- #
+
+
+_REAL_BIBLE_ROOT = Path.home() / "cee" / "bible"
+
+
+def test_threshold_registry_clean_run() -> None:
+    """The complexity_tier_thresholds entry agrees with bible 08 §5.3.
+
+    Live ``check()`` against the real bible mirror. ``thresholds_checked``
+    counts the THRESHOLD_REGISTRY size; no drift records should surface
+    for the threshold side at HEAD.
+    """
+    if not _REAL_BIBLE_ROOT.exists():
+        pytest.skip(f"Bible mirror not found at {_REAL_BIBLE_ROOT}")
+
+    report = check()
+    assert report.ok, (
+        f"unexpected drifts: {[d for d in report.drifts]}"
+    )
+    assert report.thresholds_checked >= 1
+    threshold_drifts = [
+        d for d in report.drifts if d.enum_name == "complexity_tier_thresholds"
+    ]
+    assert threshold_drifts == [], (
+        f"unexpected threshold drift: {threshold_drifts}"
+    )
+
+
+def test_threshold_registry_planted_drift_detected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Synthetic mismatch in the code loader surfaces as DriftRecord.
+
+    Patches ``_code_tier_thresholds_classification`` to return a
+    deliberately-wrong mapping (LOW upper-bound shifted from 24 to 30).
+    The threshold checker must report ``bible_canonical`` drift for
+    ``complexity_tier_thresholds`` with the offending boundary visible
+    in the detail string.
+    """
+    if not _REAL_BIBLE_ROOT.exists():
+        pytest.skip(f"Bible mirror not found at {_REAL_BIBLE_ROOT}")
+
+    from boot import consistency
+
+    def _drifted_loader() -> dict[str, tuple[int, int]]:
+        return {
+            "LOW": (0, 30),
+            "MEDIUM": (31, 49),
+            "HIGH": (50, 74),
+            "EXTREME": (75, 100),
+        }
+
+    drifted_entry = consistency.ThresholdRegistryEntry(
+        name="complexity_tier_thresholds",
+        code_source_loader=_drifted_loader,
+        canonical_bible="08_task_classification_engine.md",
+        canonical_section="### 5.3 ",
+        extractor=consistency._extract_tier_thresholds_from_bible_8_3,
+    )
+    monkeypatch.setattr(
+        consistency,
+        "THRESHOLD_REGISTRY",
+        {"complexity_tier_thresholds": drifted_entry},
+    )
+
+    report = check()
+    assert not report.ok
+    threshold_drifts = [
+        d for d in report.drifts if d.enum_name == "complexity_tier_thresholds"
+    ]
+    assert len(threshold_drifts) == 1
+    drift = threshold_drifts[0]
+    assert drift.drift_kind == "bible_canonical"
+    assert "LOW=0..30" in drift.detail
+    assert "LOW=0..24" in drift.detail

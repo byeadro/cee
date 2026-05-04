@@ -741,7 +741,7 @@ Phase 3 candidate #45 (InjectionScanResult Pydantic wrapper for halt-envelope se
 **Reads:** `schemas/raw_input.py`, `schemas/intent_object.py`, `schemas/classification.py`, bible 03 §5.2 Step 1-3, bible 00 §5 Step 2-3, bible 08 §5.1 + §5.3, Phase 2 T5 consistency check implementation (location TBD during reads).
 **Writes:** test additions to `tests/unit/test_schemas/`; possibly tightening of existing schemas if bible drift surfaces; consistency check extension in whichever module owns Phase 2's drift detectors.
 **Bible cross-refs:** bible 03 §5.2, bible 00 §5, bible 08 §5.
-**Verification:** all three schemas reflect bible state verbatim; cross-section consistency check fires on synthetic drift; tests pass.
+**Verification:** schema audit found no bible drift; existing Phase 2 T5 consistency infrastructure already covered TaskType + ComplexityTier + Domain (the original T2 enum-family targets) via 13 enum-family detectors. Reduced T2 scope shipped: (a) new IntentObject field-set bible-grounding test (mirrors RawInput + Classification pattern), (b) new tier threshold drift detector via parallel `THRESHOLD_REGISTRY` in `boot/consistency.py` covering bible 08 §5.3's 4-tier numerical boundary contract. Test count delta: +3 (1531 → 1534).
 
 #### Task 3 — LLM client wrapper
 
