@@ -373,6 +373,10 @@ Bible reconciliations surfaced during Phase 2 prep (commit `8963612`'s body). Di
 
 61. **Bible 12 §5.8 silent on per-event audit `details` shape — T3 canonized `event="llm_call"` shape implementation-side.** Bible 12 §5.8 fixes the audit envelope (ts, actor, event, run_id, details, prev_hash, entry_hash) but doesn't enumerate the `details` content shape per event type. Phase 4 T3 canonized `details` for `event="llm_call"` as `{model, mode (live|mocked), input_hash, output_hash, latency_ms, prompt_tokens, completion_tokens}`. Resolution: bible amend — add per-event `details` shape canon under bible 12 §5.8 sub-section, or under bible 19 alongside HaltType/RunErrorType/WarningType. Future events needing canonicalization include `notion_queued`, `notion_drain_*` (Phase 3 T5), boot lifecycle events (Phase 2 T8 #18), and Phase 4+ classifier/interpreter events. Defer to: future bible-edit pass.
 
+62. **Bible canonization gap: bible 03 §5.2 names ~/cee/prompts/interpreter_system.txt as a load-bearing file but no bible chapter governs its format / structure / output discipline / determinism rubric.** Bibles 05, 09, 17 explicitly govern a different artifact (FinalPrompt) and disclaim interpreter-prompt scope per their own §1 statements. Bible 04 §6.2 directory tree lists `interpreter_system.txt` alongside parallel system-prompt files (`classifier_system.txt`, `skill_generator_system.txt`, `agent_generator_system.txt`) but no chapter defines their structure. T4 ships `interpreter_system.txt` as canonical-by-shipped-state pending bible canonicalization. Resolution: bible amend — add a new chapter or section (likely under bible 05 as §X "System prompts for internal LLM-calling modules" or as a new bible 21+ chapter "Internal system prompts") covering the format, output discipline, and determinism rubric authoring rules for these files. Surface area: medium (one new bible section + audit of all four parallel files when they ship). Defer to: future bible-edit pass.
+
+63. **`raw_signals` field tag-set canonization in IntentObject schema.** Bible 00 §5 Step 2 describes `raw_signals` only as "urgency markers, tone markers, domain markers" (descriptive, not enumerative). `schemas/intent_object.py` declares the field as `list[str]` (no enum). Bible 17's eight worked examples use 14 distinct snake_case tags across all examples but never declare the set as closed. T4's `interpreter_system.txt` ships a closed 17-tag set (the 14 from bible 17 plus 3 reasonable extensions: `task_implicit`, `urgency_marker`, `social_pleasantry`) to make Claude deterministic at temperature 0 — without closure, Claude would invent new tag strings across calls. Resolution: bible amend — canonize the closed tag set in bible 00 §5 Step 2 alongside the IntentObject schema, OR canonize as a closed Literal in `schemas/intent_object.py`. Once canonized, T4's prompt should be updated to source the tag list from the canonical authority. Surface area: small (one closed-Literal addition). Defer to: future bible-edit pass + schema tightening.
+
 ---
 
 ## Phase 3 — Persistence + Substrate Adapters + Safety Gate
@@ -680,9 +684,9 @@ Status of every downstream-reconciliation candidate at Phase 3 close.
 | #46 | Closed | `c37ed04` (Phase 3 T8 — `Confirmation` + `ConfirmationRequest` schemas) |
 | #57 | Closed | `3c9ad81` (Phase 3 T5 — `notion_writer` + B8 migration) |
 | #43 | In-flight: in-scope for Phase 4 T13 (`scan(raw_input)` wrapper closure pending) | (resolution-commit ref TBD) |
-| (51 others) | Still deferred — phase-targeted or bible-edit-pass | n/a |
+| (53 others) | Still deferred — phase-targeted or bible-edit-pass | n/a |
 
-**Math verification:** 8 closed (#15, #23, #25, #30, #32, #41, #46, #57) + 1 partial (#21) + 1 in-flight (#43) + 51 still-open (47 carried-over + #58 + #59 + #60 + #61) = 61 total candidates. Matches `grep -c "^[0-9]\+\.\s\+\*\*" build_status.md` post-sweep.
+**Math verification:** 8 closed (#15, #23, #25, #30, #32, #41, #46, #57) + 1 partial (#21) + 1 in-flight (#43) + 53 still-open (47 carried-over + #58 + #59 + #60 + #61 + #62 + #63) = 63 total candidates. Matches `grep -c "^[0-9]\+\.\s\+\*\*" build_status.md` post-sweep.
 
 ---
 
@@ -765,7 +769,7 @@ Phase 3 candidate #45 (InjectionScanResult Pydantic wrapper for halt-envelope se
 **Reads:** bible 03 §5.2 Step 2, bible 05 (full chapter), bible 17 (full chapter or relevant sections), bible 09 §5.1 (prompt_builder consumption shape).
 **Writes:** `prompts/interpreter_system.txt`.
 **Bible cross-refs:** bible 03, bible 05, bible 17, bible 09.
-**Verification:** prompt file present, format-matches-bible (verified by hand-review against bible 05); produces structured IntentObject when fed test inputs through T3's mock client.
+**Verification:** prompt file present at ~/cee/prompts/interpreter_system.txt; format authorities corrected from bible 05 (which disclaims interpreter-prompt scope) to bible 03 §5.2 Step 2 + bible 00 §5 Step 2 + IntentObject schema; ambiguity rubric (6 additive components, capped at 1.0) reproduces both bible halt anchors (1.0 / 1.0) and both selected few-shot anchor cases (0.15 / 0.35) exactly; closed 17-tag raw_signals set ships in prompt; T5 design boundaries documented in commit body; bible canonization gaps surfaced as candidates #62, #63.
 
 #### Task 5 — Interpreter module
 
