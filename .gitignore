@@ -8,6 +8,14 @@ __pycache__/
 venv/
 ENV/
 env/
+
+# Secrets and local config (defense-in-depth; user-config files live at
+# ~/.cee/ outside the repo, but belt-and-braces guards against accidental
+# git add of any local copy)
+.env
+*.env
+credentials.toml
+config.toml
 *.egg-info/
 dist/
 build/

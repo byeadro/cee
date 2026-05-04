@@ -369,6 +369,10 @@ Bible reconciliations surfaced during Phase 2 prep (commit `8963612`'s body). Di
 
 59. **Phase 2 closed marker missing from build_status.md.** Phase 2 close commit 635d003 modified zero build_status.md content; the Phase 2 section header at line 37 lacks the rich closed-marker format adopted for Phase 3 in T13 commit 2. Phase 2's "shipped" status is currently inferable only from Phase 2 T11's checklist items being complete and from git log. Surface area: small (one status block insertion under the Phase 2 section header, mirroring the Phase 3 format adopted by T13 commit 2). Defer to: future cleanup commit, low priority — Phase 2 is shipped and verifiable from git history regardless of build_status.md. Discovered during T13 commit 2 reads.
 
+60. **`LLMClient` Protocol vs bible 14 §5.6 `ExecutorProtocol` semantic distinction not canonized in bible.** Phase 4 T3 ships `~/cee/llm/anthropic_client.py` with `LLMClient` Protocol for internal LLM calls (interpreter Step 2 per bible 03 §5.2 + classifier §5.5 fallback). Bible 14 §5.6 names `~/cee/executor/api_executor.py` with `ExecutorProtocol.send(final_prompt, target)` for Phase 7's terminal `EXECUTOR.send(FinalPrompt)` step. Two distinct call sites, two distinct protocols — but bible doesn't currently canonize the distinction (bible 14 §5.6 is the only protocol-shape canon and it's Phase-7-specific). Resolution: bible amend — explicitly distinguish "internal LLM calls" (Phase 4 modules) from "terminal executor calls" (Phase 7) in bible 14 §5.6 or a new bible 14 sub-section. Surface area: bible-edit only. Defer to: future bible-edit pass.
+
+61. **Bible 12 §5.8 silent on per-event audit `details` shape — T3 canonized `event="llm_call"` shape implementation-side.** Bible 12 §5.8 fixes the audit envelope (ts, actor, event, run_id, details, prev_hash, entry_hash) but doesn't enumerate the `details` content shape per event type. Phase 4 T3 canonized `details` for `event="llm_call"` as `{model, mode (live|mocked), input_hash, output_hash, latency_ms, prompt_tokens, completion_tokens}`. Resolution: bible amend — add per-event `details` shape canon under bible 12 §5.8 sub-section, or under bible 19 alongside HaltType/RunErrorType/WarningType. Future events needing canonicalization include `notion_queued`, `notion_drain_*` (Phase 3 T5), boot lifecycle events (Phase 2 T8 #18), and Phase 4+ classifier/interpreter events. Defer to: future bible-edit pass.
+
 ---
 
 ## Phase 3 — Persistence + Substrate Adapters + Safety Gate
@@ -676,9 +680,9 @@ Status of every downstream-reconciliation candidate at Phase 3 close.
 | #46 | Closed | `c37ed04` (Phase 3 T8 — `Confirmation` + `ConfirmationRequest` schemas) |
 | #57 | Closed | `3c9ad81` (Phase 3 T5 — `notion_writer` + B8 migration) |
 | #43 | In-flight: in-scope for Phase 4 T13 (`scan(raw_input)` wrapper closure pending) | (resolution-commit ref TBD) |
-| (49 others) | Still deferred — phase-targeted or bible-edit-pass | n/a |
+| (51 others) | Still deferred — phase-targeted or bible-edit-pass | n/a |
 
-**Math verification:** 8 closed (#15, #23, #25, #30, #32, #41, #46, #57) + 1 partial (#21) + 1 in-flight (#43) + 49 still-open (47 carried-over + #58 + #59) = 59 total candidates. Matches `grep -c "^[0-9]\+\.\s\+\*\*" build_status.md` post-sweep.
+**Math verification:** 8 closed (#15, #23, #25, #30, #32, #41, #46, #57) + 1 partial (#21) + 1 in-flight (#43) + 51 still-open (47 carried-over + #58 + #59 + #60 + #61) = 61 total candidates. Matches `grep -c "^[0-9]\+\.\s\+\*\*" build_status.md` post-sweep.
 
 ---
 
@@ -747,11 +751,11 @@ Phase 3 candidate #45 (InjectionScanResult Pydantic wrapper for halt-envelope se
 
 **Effort:** M
 **Track:** B
-**Goal:** `~/cee/llm/anthropic_client.py` — Anthropic SDK wrapper exposing `LLMClient` Protocol with mock and live implementations. Pinned model version in `~/.cee/config.toml [anthropic]`. Live calls gated by `CEE_LLM_LIVE=true` env var; mock-default in CI. Mock client returns deterministic responses keyed by SHA-256 of input. Golden snapshot capture mechanism: one live run per fixture seeds a golden file; thereafter mock returns the snapshot.
-**Reads:** bible 03 §5.2 Step 2 (Claude call requirement), bible 18 §5.6 (mocking strategy if such section exists; surface during reads), `schemas/credentials.py` (for `[anthropic]` config block).
-**Writes:** `llm/anthropic_client.py`, `tests/unit/test_llm/`, possible `~/.cee/config.toml` schema extension if not already present.
-**Bible cross-refs:** bible 03, bible 18, bible 14 (Claude Code integration if relevant).
-**Verification:** mock client tests pass; live client tests gated by env var; golden snapshot mechanism tested.
+**Status:** shipped. anthropic SDK 0.97.0 installed (declared as `anthropic>=0.40` since Phase 2 T6 for Notion-MCP transport; T3 is the first Phase 4 install). LLMClient Protocol + LiveAnthropicClient ship in `~/cee/llm/anthropic_client.py`. Per bible 18 §5.6, mocking happens at the SDK boundary in `tests/conftest.py` (no parallel `MockLLMClient` in production code). Audit emission canonized for `event="llm_call"` with details `{model, mode, input_hash, output_hash, latency_ms, prompt_tokens, completion_tokens}` — surfaced as candidate #61 for bible canonicalization. Production guard: `default_client_factory` requires `CEE_LLM_LIVE=true` env var.
+**Reads:** bible 03 §5.2 Step 2 (Claude call requirement), bible 08 §5.5 (classifier system-prompt fallback), bible 12 §5.8 (audit envelope), bible 14 §5.6 (executor adapter — distinct call site), bible 18 §5.6 (mocking strategy — bible-canonical SDK monkeypatch pattern), `schemas/credentials.py` (AnthropicCredentials), `schemas/config.py` (Phase2Config.api_model).
+**Writes:** `llm/__init__.py`, `llm/anthropic_client.py`, `tests/conftest.py`, `tests/unit/test_llm/__init__.py`, `tests/unit/test_llm/test_anthropic_client.py`, `tests/fixtures/llm_responses/.gitkeep`, `.gitignore` (secret-file defense-in-depth), `pyproject.toml` (added `llm*` to packages.find include), `build_status.md` (this entry + candidates #60 + #61).
+**Bible cross-refs:** bible 03 §5.2 Step 2, bible 08 §5.5, bible 12 §5.8, bible 14 §5.6, bible 18 §5.6.
+**Verification:** 6 new unit tests pass; full suite 1540 (was 1534, delta +6 as locked); `from llm.anthropic_client import ...` succeeds; live integration deferred until first live call (T5 will exercise via `cee record-llm-response`-style fixture seeding when canned responses are needed).
 
 #### Task 4 — Interpreter system prompt
 
