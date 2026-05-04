@@ -46,7 +46,7 @@ If you have 30 minutes:
 - Read [`bible/00_project_vision.md`](bible/00_project_vision.md) in full.
 - Read [`bible/04_database_file_structure.md`](bible/04_database_file_structure.md) for the substrate layout.
 - Read [`bible/12_prompt_leak_security_rules.md`](bible/12_prompt_leak_security_rules.md) for the safety + audit posture.
-- Read [`bible/20_module_inventory.md`](bible/20_module_inventory.md) for the module-by-module map.
+- Read [`bible/20_production_build_plan.md`](bible/20_production_build_plan.md) for the module-by-module map.
 
 If you want to understand *how* it was built (the MWI angle):
 - Browse the commit history. Phase 3 (T1 through T13) is 13 disciplined task cycles.
