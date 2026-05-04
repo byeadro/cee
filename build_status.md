@@ -335,7 +335,7 @@ Bible reconciliations surfaced during Phase 2 prep (commit `8963612`'s body). Di
 41. **In-flight tracking: T6 ships → #32 closure becomes wireable.** Bible 12 §5.7 mandates substrate writers re-run the redactor before persistence. T3's filesystem_writer.py left a `# TODO #32 / bible 12 §5: invoke redactor here once T6 ships` marker at the role-validation boundary. Now that T6 ships, post-T6 wire-up commit closes #32 by importing safety_gate.redact in filesystem_writer and calling it before atomic_write_*. Tracked for in-flight wire-up; not a Phase 3 task but a small follow-up commit when scheduled. **CLOSED AT `4893895` (post-T6 reconciliation, cascaded from #32) BY VIRTUE OF #32 CLOSURE.** The original premise that filesystem_writer needed redaction wire-up was a bible-misread (see #32, #42). No wire-up ships; #41 closes alongside.
 42. **Bible 12 §5.7 (canonical Detailed Workflow) contradicts bible 12 §11 line 470 (Build Notes for Claude Code) on filesystem_writer redactor invocation.** §11 line 470 says "filesystem_writer.py, obsidian_writer.py, notion_writer.py each call the redactor before writing." §5.7 explicitly says only Obsidian and Notion re-run the redactor as defense-in-depth on derived substrates; filesystem (canon) substrate's security pass is mode-bits + path-containment checks, NOT redaction. T3 grounded the original #32 wire-up against §11 line 470 (the misread); #32 closed Path A after §5.7-vs-§11 contradiction surfaced. Resolution: bible amend — reword §11 line 470 from "filesystem_writer.py, obsidian_writer.py, notion_writer.py each call the redactor" → "obsidian_writer.py and notion_writer.py each call the redactor; filesystem_writer.py applies mode-bit and path-containment checks per §5.7". Defer to: future bible-edit pass.
 
-43. **`scan(raw_input: RawInput)` pipeline wrapper for injection scanner.** Bible 12 §5.5 specifies `scan_for_injection(raw_input)` as the canonical pipeline-stage entry point — iterates `raw_input.text` + each attachment, dispatches to per-text scanner. T7 ships only the per-text primitive `scan_text(text, *, location)` because RawInput schema doesn't yet exist (Phase 4/5 territory). Resolution: when RawInput schema lands, ship the wrapper that iterates and dispatches to `scan_text`. Surface area: small (single iteration helper). Closed by: pipeline-integration commit post-RawInput.
+43. **`scan(raw_input: RawInput)` pipeline wrapper for injection scanner.** Bible 12 §5.5 specifies `scan_for_injection(raw_input)` as the canonical pipeline-stage entry point — iterates `raw_input.text` + each attachment, dispatches to per-text scanner. T7 ships only the per-text primitive `scan_text(text, *, location)` because RawInput schema doesn't yet exist (Phase 4/5 territory). Resolution: when RawInput schema lands, ship the wrapper that iterates and dispatches to `scan_text`. Surface area: small (single iteration helper). Closed by: pipeline-integration commit post-RawInput.  IN-FLIGHT: in-scope for Phase 4 T13 (RawInput schema verified shipped). Resolution-commit ref TBD pending T13.
 
 44. **User-extendable injection patterns at `~/cee/security/injection_patterns.py`.** Bible 12 §11 line 467 names a user-extension seam parallel to T6's `paths.REDACT_LIST` user-config. T7 ships only `_BUILTIN_PATTERNS` from bible §5.5; user-extension surface deferred. Resolution: when user-extension is needed, ship a loader analogous to T6's `load_user_patterns()` reading from `~/cee/security/injection_patterns.py` (or canonicalize the path under `~/.cee/` for consistency with T6's `~/.cee/redact_list`). Note potential bible amendment needed for path consistency. Defer to: future user-extension request or bible-edit pass.
 
@@ -675,12 +675,190 @@ Status of every downstream-reconciliation candidate at Phase 3 close.
 | #41 | Closed (cascaded from #32) | `4893895` (post-T6 reconciliation) |
 | #46 | Closed | `c37ed04` (Phase 3 T8 — `Confirmation` + `ConfirmationRequest` schemas) |
 | #57 | Closed | `3c9ad81` (Phase 3 T5 — `notion_writer` + B8 migration) |
-| (50 others) | Still deferred — phase-targeted or bible-edit-pass | n/a |
+| #43 | In-flight: in-scope for Phase 4 T13 (`scan(raw_input)` wrapper closure pending) | (resolution-commit ref TBD) |
+| (49 others) | Still deferred — phase-targeted or bible-edit-pass | n/a |
 
-**Math verification:** 8 closed (#15, #23, #25, #30, #32, #41, #46, #57) + 1 partial (#21) + 50 still-open (48 carried-over + #58 + #59) = 59 total candidates. Matches `grep -c "^[0-9]\+\." build_status.md` post-sweep.
+**Math verification:** 8 closed (#15, #23, #25, #30, #32, #41, #46, #57) + 1 partial (#21) + 1 in-flight (#43) + 49 still-open (47 carried-over + #58 + #59) = 59 total candidates. Matches `grep -c "^[0-9]\+\.\s\+\*\*" build_status.md` post-sweep.
 
 ---
 
-## Phase 4+ (placeholder)
+## Phase 4 — Interpreter and Classifier
 
-To be planned at Phase 3 close, following the same pattern as Phase 2 + Phase 3. Per bible 20: Phase 4 (Interpreter + Classifier), Phase 5 (Agents + Skills + Strategy), Phase 6 (Prompt Builder + Output Format + Grounding), Phase 7 (Pipeline Driver + Executor + Claude Code Integration), Phase 8 (Production Verification).
+**Status:** in progress (ratified at T1; tasks T2-T14 pending). Per bible 20 §5.4 risk profile: High. "This is the spine. Every downstream module depends on the classifier producing stable, correct output." Bible 20 §5.11 effort estimate: 5/8/12 working days.
+
+**Scope:** Activate the Run pipeline's Step 1 (Capture) → Step 2 (Interpretation) → Step 3 (Classification) chain per bible 03 §5.2. Build the Interpreter module that converts RawInput to IntentObject via temperature-0 Claude call. Build the Classifier module that converts IntentObject to Classification via deterministic pattern matching, complexity scoring, tier mapping, and flag evaluation. Build the determinism testing infrastructure that bible 18 §5.2 requires for the 5 deterministic modules CEE will ship across Phases 4 + 6.
+
+**Gate (per bible 20 §5.4):**
+1. All 8 task_types can be assigned to representative inputs.
+2. Complexity rubric produces stable scores (determinism test passes with N=10).
+3. All four flags fire on representative inputs and don't fire on neutral inputs.
+4. Hard caps apply (LOW Run can't exceed 1 agent post-classification).
+5. Ambiguity halt fires when confidence delta < 0.10.
+6. Test: `tests/unit/test_interpreter/`, `tests/unit/test_classifier/` pass.
+7. Test: `tests/determinism/` passes for both modules.
+
+**Reference:** bible 20 §5.4 (Phase 4 outputs + gate criteria), bible 03 §5.2 Steps 1-3 (Run pipeline annotated), bible 00 §5 Steps 2-3 (Interpretation + Classification contracts), bible 01 §8.2 (precedence rules), bible 08 §5 (full classifier specification — task_type enum, complexity rubric, tier thresholds, flag set, classifier algorithm, precedence order), bible 18 §5.2 (determinism testing framework).
+
+**Carried-forward state at Phase 4 start:**
+
+Phase 4's three Pydantic schemas (RawInput, IntentObject, Classification) shipped early during Phase 1/2 era. Track A scope is therefore audit-and-extend, not net-new schema work:
+- `schemas/raw_input.py` (67 lines, 5 fields + Attachment sub-model, registered in schemas/__init__.py)
+- `schemas/intent_object.py` (50 lines, full IntentObject matching bible 00 §5 Step 2 verbatim)
+- `schemas/classification.py` (259 lines, Classification + 5 sub-models + 3 model_validators including the §10.10 flag-trigger invariant)
+- 83 passing tests across these three schemas
+
+Phase 3 candidate #43 (`scan(raw_input: RawInput)` pipeline wrapper for injection scanner) is in-scope for Phase 4 T13. The original premise that "RawInput schema doesn't exist yet" is stale — the schema shipped in Phase 1/2 era. T13 closes #43 by wiring the wrapper around T7's `scan_text` primitive.
+
+Phase 3 candidate #45 (InjectionScanResult Pydantic wrapper for halt-envelope serialization) defers to Phase 5+ per its existing close note. Halt-envelope schema is Phase 7's pipeline driver concern, not Phase 4.
+
+**Carried-forward deferrals targeted in Phase 4:** schemas (already shipped, audit only); #43 wrapper closure.
+
+**Track structure:**
+
+- **Track A — Schema verification** (T2): re-audit the three shipped Phase 4 schemas against current bible state; extend Phase 2's cross-section consistency check with task_type enum, domain enum, and tier-threshold drift detectors.
+- **Track B — Interpreter** (T3-T5): LLM client wrapper, fixed system prompt, interpreter module with ambiguity branching.
+- **Track C — Classifier** (T6-T11): verb classes data, scoring, tiers, flags, patterns + system prompt, classifier orchestration.
+- **Track D — Determinism + cross-cutting** (T12-T13): tests/determinism/ framework + integration test + safety_gate.scan wrapper closure of Phase 3 #43.
+- **Track E — Gate** (T14): Phase 4 gate test mirroring Phase 3 T13 commit 1 pattern.
+
+### Tasks
+
+#### Task 1 — Phase 4 ratification
+
+**Effort:** S
+**Status:** shipped at this commit.
+**Goal:** Land the Phase 4 section in build_status.md per bible 20 §5.4. No code changes.
+**Reads:** bible 20 §5.4, bible 03 §5.2, bible 08 (full chapter), bible 18 §5.2, bible 20 §5.10 (cross-cutting work), Phase 3 candidate list (for #43 reclassification).
+**Writes:** `build_status.md` (Phase 4 section insertion + #43 reclassification in Phase 3 sweep table).
+**Bible cross-refs:** bible 20 §5.4, bible 03, bible 08, bible 18, bible 00.
+**Verification:** Phase 4 section present in build_status.md; #43 row in Phase 3 sweep table moved from collapsed (50 others) row into individual in-flight row; candidate count remains 59.
+
+#### Task 2 — Schema audit + consistency drift extension
+
+**Effort:** S
+**Track:** A
+**Goal:** Verify the three shipped Phase 4 schemas (RawInput, IntentObject, Classification) match current bible state. Extend Phase 2's cross-section consistency check to cover the new closed enums shipped in Phase 4's schemas: task_type (8-value), domain (7-value), complexity tier thresholds (4-value with score boundaries).
+**Reads:** `schemas/raw_input.py`, `schemas/intent_object.py`, `schemas/classification.py`, bible 03 §5.2 Step 1-3, bible 00 §5 Step 2-3, bible 08 §5.1 + §5.3, Phase 2 T5 consistency check implementation (location TBD during reads).
+**Writes:** test additions to `tests/unit/test_schemas/`; possibly tightening of existing schemas if bible drift surfaces; consistency check extension in whichever module owns Phase 2's drift detectors.
+**Bible cross-refs:** bible 03 §5.2, bible 00 §5, bible 08 §5.
+**Verification:** all three schemas reflect bible state verbatim; cross-section consistency check fires on synthetic drift; tests pass.
+
+#### Task 3 — LLM client wrapper
+
+**Effort:** M
+**Track:** B
+**Goal:** `~/cee/llm/anthropic_client.py` — Anthropic SDK wrapper exposing `LLMClient` Protocol with mock and live implementations. Pinned model version in `~/.cee/config.toml [anthropic]`. Live calls gated by `CEE_LLM_LIVE=true` env var; mock-default in CI. Mock client returns deterministic responses keyed by SHA-256 of input. Golden snapshot capture mechanism: one live run per fixture seeds a golden file; thereafter mock returns the snapshot.
+**Reads:** bible 03 §5.2 Step 2 (Claude call requirement), bible 18 §5.6 (mocking strategy if such section exists; surface during reads), `schemas/credentials.py` (for `[anthropic]` config block).
+**Writes:** `llm/anthropic_client.py`, `tests/unit/test_llm/`, possible `~/.cee/config.toml` schema extension if not already present.
+**Bible cross-refs:** bible 03, bible 18, bible 14 (Claude Code integration if relevant).
+**Verification:** mock client tests pass; live client tests gated by env var; golden snapshot mechanism tested.
+
+#### Task 4 — Interpreter system prompt
+
+**Effort:** M
+**Track:** B
+**Goal:** `~/cee/prompts/interpreter_system.txt` — fixed system prompt that bible 03 §5.2 Step 2 names. Bible-grounded format (bible 05 prompt engineering rules + bible 17 example prompts library) so the file shape aligns with what Phase 6's prompt_builder will consume.
+**Reads:** bible 03 §5.2 Step 2, bible 05 (full chapter), bible 17 (full chapter or relevant sections), bible 09 §5.1 (prompt_builder consumption shape).
+**Writes:** `prompts/interpreter_system.txt`.
+**Bible cross-refs:** bible 03, bible 05, bible 17, bible 09.
+**Verification:** prompt file present, format-matches-bible (verified by hand-review against bible 05); produces structured IntentObject when fed test inputs through T3's mock client.
+
+#### Task 5 — Interpreter module
+
+**Effort:** L
+**Track:** B
+**Goal:** `~/cee/interpreter/interpreter.py` — INTERPRETER.run(RawInput) → IntentObject. Calls Claude via T3's client at temperature 0 with T4's system prompt. Implements ambiguity branching per bible 03 §5.2 Step 2: ambiguity_score > 0.6 halts for clarification; [0.3, 0.6] continues with implicit_assumptions flagged; < 0.3 silent. Audit emission per bible 12 §5.8 to roles.log.
+**Reads:** T3, T4, bible 03 §5.2 Step 2, bible 00 §5 Step 2, bible 12 §5.8 (audit shape).
+**Writes:** `interpreter/interpreter.py`, `tests/unit/test_interpreter/`.
+**Bible cross-refs:** bible 03, bible 00, bible 12.
+**Verification:** unit tests pass with mock client; ambiguity branching exercised at all 3 thresholds; audit events emitted correctly; integration with T3 verified.
+
+#### Task 6 — verb_classes.json
+
+**Effort:** S
+**Track:** C
+**Goal:** `~/cee/classifier/verb_classes.json` — verb-to-task_type mapping data file per bible 08 §11. Each verb maps to a list of `(task_type, weight)` tuples. Seed catalog with representative verbs covering all 8 task_types.
+**Reads:** bible 08 §5.1 (8-value enum), bible 08 §5.5 (classifier algorithm — how verb classes are consumed), bible 08 §11.
+**Writes:** `classifier/verb_classes.json`, `tests/unit/test_classifier/test_verb_classes.py` (load + schema validation).
+**Bible cross-refs:** bible 08.
+**Verification:** JSON loads; every verb maps to valid (task_type, weight); coverage spans all 8 task_types.
+
+#### Task 7 — Complexity scoring
+
+**Effort:** M
+**Track:** C
+**Goal:** `~/cee/classifier/scoring.py` — four 0-25 component scorers per bible 08 §5.2: input_ambiguity, output_structure, agent_count_required, skill_count_required. Pure functions taking IntentObject (or partial inputs) returning component score with audit detail.
+**Reads:** bible 08 §5.2.
+**Writes:** `classifier/scoring.py`, `tests/unit/test_classifier/test_scoring.py`.
+**Bible cross-refs:** bible 08 §5.2.
+**Verification:** each scorer's output deterministic for identical input; all four scorers tested across boundary conditions; component scores sum-bound to [0, 100].
+
+#### Task 8 — Tier mapper
+
+**Effort:** S
+**Track:** C
+**Goal:** `~/cee/classifier/tiers.py` — pure score→tier mapping with hard cap escalation per bible 08 §5.3. LOW [0-24], MEDIUM [25-49], HIGH [50-74], EXTREME [75-100]. Hard cap: LOW + (component C > 5 OR D > 5) escalates to MEDIUM.
+**Reads:** bible 08 §5.3.
+**Writes:** `classifier/tiers.py`, `tests/unit/test_classifier/test_tiers.py`.
+**Bible cross-refs:** bible 08 §5.3.
+**Verification:** boundary tests at each tier threshold; escalation tests at LOW+C>5, LOW+D>5, both; hard cap "LOW Run can't exceed 1 agent" downstream-enforced (verified via integration in T11).
+
+#### Task 9 — Flag evaluators
+
+**Effort:** M
+**Track:** C
+**Goal:** `~/cee/classifier/flags.py` — four flag evaluators per bible 08 §5.4: needs_grounding, sensitive_data, destructive_potential, requires_human_gate. Each returns `(bool, list_of_triggers)`. EXTREME tier forces requires_human_gate=true per §5.5.
+**Reads:** bible 08 §5.4 + §5.5 (force-gate rule).
+**Writes:** `classifier/flags.py`, `tests/unit/test_classifier/test_flags.py`.
+**Bible cross-refs:** bible 08 §5.4, §5.5.
+**Verification:** each flag fires on positive inputs, doesn't fire on neutral; trigger lists non-empty when flag=True per §10.10 invariant; EXTREME force-gate exercised.
+
+#### Task 10 — Pattern matchers + classifier system prompt
+
+**Effort:** L
+**Track:** C
+**Goal:** `~/cee/classifier/patterns.py` — pattern matchers per task_type returning `(bool, confidence)`. One matcher per task_type covering 8 task_types. `~/cee/prompts/classifier_system.txt` — fixed system prompt used only when patterns inconclusive (per bible 08 §11).
+**Reads:** bible 08 §5.5 (classifier algorithm — how patterns and system prompt interact), bible 08 §5.6 (precedence order), bible 05, bible 17.
+**Writes:** `classifier/patterns.py`, `prompts/classifier_system.txt`, `tests/unit/test_classifier/test_patterns.py`.
+**Bible cross-refs:** bible 08, bible 05, bible 17.
+**Verification:** pattern matchers tested per task_type; precedence order respected; system prompt invoked only on inconclusive cases (verified via test fixtures).
+
+#### Task 11 — Classifier orchestration
+
+**Effort:** M
+**Track:** C
+**Goal:** `~/cee/classifier/classifier.py` — CLASSIFIER.run(IntentObject) → Classification. Orchestrates T6-T10: load verb classes, run pattern matchers, apply precedence per §5.6, score components per T7, map tier per T8, evaluate flags per T9, fall back to system prompt per T10 when inconclusive. Ambiguity halt when confidence delta < 0.10 per bible 03 §5.2 Step 3. Audit emission per bible 08 §7.1.
+**Reads:** T6-T10, bible 08 §5.5 + §5.6, bible 03 §5.2 Step 3, bible 08 §7.1.
+**Writes:** `classifier/classifier.py`, `tests/unit/test_classifier/test_classifier.py`.
+**Bible cross-refs:** bible 08, bible 03.
+**Verification:** unit tests with mock client (for system prompt fallback); ambiguity halt fires at delta < 0.10; audit shape matches §7.1; all 8 task_types reachable across fixture set.
+
+#### Task 12 — Determinism framework + interpreter + classifier determinism tests
+
+**Effort:** M
+**Track:** D
+**Goal:** `~/cee/tests/determinism/` infrastructure per bible 18 §5.2. Parameterized N=10 framework (`@pytest.mark.parametrize("module", DETERMINISTIC_MODULES)`) covering Phase 4's two modules; extensible for Phase 6's three additional modules. Hybrid approach: N=10 same-input drift detection + golden snapshots for representative inputs in `tests/golden/phase4/`. Tests run in CI at N=10; nightly bumps to N=100.
+**Reads:** bible 18 §5.2.
+**Writes:** `tests/determinism/conftest.py`, `tests/determinism/test_interpreter_determinism.py`, `tests/determinism/test_classifier_determinism.py`, `tests/golden/phase4/`.
+**Bible cross-refs:** bible 18 §5.2.
+**Verification:** N=10 passes for both modules with mock client; golden snapshots match across runs; framework parameterized for future module additions.
+
+#### Task 13 — Integration test + safety_gate.scan wrapper closure
+
+**Effort:** M
+**Track:** D
+**Goal:** `~/cee/tests/integration/test_interpreter_classifier_chain.py` — full Step 1 → Step 2 → Step 3 chain test exercising RawInput → Interpreter → IntentObject → Classifier → Classification. Closes Phase 3 candidate #43 by wiring `safety_gate.scan(raw_input: RawInput)` wrapper around T7's `scan_text` primitive per bible 12 §5.5.
+**Reads:** T5, T11, bible 12 §5.5, Phase 3 T7 (`scan_text` primitive).
+**Writes:** `tests/integration/test_interpreter_classifier_chain.py`, `safety_gate/__init__.py` or `safety_gate/injection_scanner.py` (scan wrapper added; stale candidate-#43 comment in injection_scanner.py:50 corrected).
+**Bible cross-refs:** bible 12, bible 03.
+**Verification:** chain test passes end-to-end; #43 wrapper unit-tested; injection_scanner.py:50 stale comment removed.
+
+#### Task 14 — Phase 4 gate
+
+**Effort:** M
+**Track:** E
+**Goal:** `~/cee/tests/integration/test_phase4_gate.py` — 7 tests, one per bible 20 §5.4 gate bullet. Subprocess-runs T12 determinism suite (criterion 7) and T6 unit suites (criterion 6); direct tests for criteria 1-5. Pattern mirrors Phase 3 T13 commit 1.
+**Reads:** bible 20 §5.4 (7 gate bullets verbatim), Phase 3 T13 commit 1 implementation as pattern reference.
+**Writes:** `tests/integration/test_phase4_gate.py`; `build_status.md` (Phase 4 closed marker, sweep table extension).
+**Bible cross-refs:** bible 20 §5.4.
+**Verification:** all 7 criterion tests pass; Phase 4 gate criterion satisfied; commit message records final test count + Phase 4 commit hash.
